@@ -1,0 +1,8 @@
+node_modules/
+dist/
+output/
+.pnpm-store/
+AGENTS.md
+sources/
+.DS_Store
+*.log
