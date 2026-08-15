@@ -155,9 +155,19 @@ describe('mNUTRIC', () => {
 });
 
 describe('RFH-NPT', () => {
-  test('classifies alcoholic hepatitis or tube feeding directly as high risk', () => {
-    const result = scoreRfhNpt({ alcoholicHepatitis: 'yes', tubeFeeding: 'no' }, { height: 170, weight: 70 });
+  test('classifies alcoholic hepatitis directly as high risk without tube feeding', () => {
+    const result = scoreRfhNpt({ alcoholicHepatitis: 'yes' }, {});
 
+    assert.equal(result.nativeStatus, 'COMPLETE');
+    assert.equal(result.nativeScore, 6);
+    assert.equal(result.nativeCategory, '高風險');
+    assert.equal(result.normalizedNutritionRisk, 'HIGH');
+  });
+
+  test('classifies tube feeding directly as high risk without alcoholic hepatitis', () => {
+    const result = scoreRfhNpt({ tubeFeeding: 'yes' }, {});
+
+    assert.equal(result.nativeStatus, 'COMPLETE');
     assert.equal(result.nativeScore, 6);
     assert.equal(result.nativeCategory, '高風險');
     assert.equal(result.normalizedNutritionRisk, 'HIGH');

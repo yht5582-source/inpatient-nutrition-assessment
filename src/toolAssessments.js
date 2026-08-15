@@ -167,17 +167,17 @@ function getPositiveMeasurementIssue(context) {
 }
 
 export function scoreRfhNpt(answers = {}, context = {}) {
-  const missingInitial = RFH_INITIAL_FIELDS.filter((field) => !isRecorded(answers[field]));
-  if (missingInitial.length > 0) return incompleteEvaluation(missingInitial);
-
   const invalidInitial = RFH_INITIAL_FIELDS.filter(
-    (field) => answers[field] !== 'yes' && answers[field] !== 'no'
+    (field) => isRecorded(answers[field]) && answers[field] !== 'yes' && answers[field] !== 'no'
   );
   if (invalidInitial.length > 0) return incompleteEvaluation([], invalidInitial);
 
   if (answers.alcoholicHepatitis === 'yes' || answers.tubeFeeding === 'yes') {
     return completeRfhEvaluation(6);
   }
+
+  const missingInitial = RFH_INITIAL_FIELDS.filter((field) => !isRecorded(answers[field]));
+  if (missingInitial.length > 0) return incompleteEvaluation(missingInitial);
 
   if (!isRecorded(answers.fluidOverload)) return incompleteEvaluation(['fluidOverload']);
   if (answers.fluidOverload !== 'yes' && answers.fluidOverload !== 'no') {
