@@ -73,6 +73,30 @@ describe('NRS-2002', () => {
     assert.deepEqual(result.missing, ['diseaseScore']);
     assert.equal(result.normalizedMalnutrition, 'NOT_APPLICABLE');
   });
+
+  test('does not complete when age is missing or non-numeric', () => {
+    const missingAge = scoreNrs2002({
+      initialBmiLow: 'no', initialWeightLoss: 'no', initialReducedIntake: 'no', initialSevereIllness: 'no'
+    }, {});
+    const invalidAge = scoreNrs2002({
+      initialBmiLow: 'no', initialWeightLoss: 'no', initialReducedIntake: 'no', initialSevereIllness: 'no'
+    }, { age: 'unknown' });
+
+    assert.equal(missingAge.nativeStatus, 'IN_PROGRESS');
+    assert.deepEqual(missingAge.missing, ['age']);
+    assert.equal(invalidAge.nativeStatus, 'IN_PROGRESS');
+    assert.deepEqual(invalidAge.invalid, ['age']);
+  });
+
+  test('rejects boolean final scores', () => {
+    const result = scoreNrs2002({
+      initialBmiLow: 'yes', initialWeightLoss: 'no', initialReducedIntake: 'no', initialSevereIllness: 'no',
+      nutritionScore: false, diseaseScore: true
+    }, { age: 55 });
+
+    assert.equal(result.nativeStatus, 'IN_PROGRESS');
+    assert.deepEqual(result.invalid, ['nutritionScore', 'diseaseScore']);
+  });
 });
 
 describe('mNUTRIC', () => {
@@ -106,5 +130,25 @@ describe('mNUTRIC', () => {
 
     assert.equal(result.nativeStatus, 'IN_PROGRESS');
     assert.deepEqual(result.invalid, ['apacheIi', 'sofa', 'comorbidities']);
+  });
+
+  test('does not complete when age is missing or non-numeric', () => {
+    const answers = { apacheIi: '14', sofa: '5', comorbidities: '1', preIcuDays: '0' };
+    const missingAge = scoreMNutric(answers, {});
+    const invalidAge = scoreMNutric(answers, { age: 'unknown' });
+
+    assert.equal(missingAge.nativeStatus, 'IN_PROGRESS');
+    assert.deepEqual(missingAge.missing, ['age']);
+    assert.equal(invalidAge.nativeStatus, 'IN_PROGRESS');
+    assert.deepEqual(invalidAge.invalid, ['age']);
+  });
+
+  test('rejects boolean clinical inputs', () => {
+    const result = scoreMNutric({
+      apacheIi: false, sofa: true, comorbidities: false, preIcuDays: true
+    }, { age: 60 });
+
+    assert.equal(result.nativeStatus, 'IN_PROGRESS');
+    assert.deepEqual(result.invalid, ['apacheIi', 'sofa', 'comorbidities', 'preIcuDays']);
   });
 });

@@ -28,6 +28,7 @@ function isRecorded(value) {
 }
 
 function toNumber(value) {
+  if (typeof value !== 'number' && typeof value !== 'string') return null;
   if (typeof value === 'string' && value.trim() === '') return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
@@ -38,6 +39,12 @@ function toIntegerInRange(value, minimum, maximum = Infinity) {
   return number != null && Number.isInteger(number) && number >= minimum && number <= maximum
     ? number
     : null;
+}
+
+function getAgeIssue(context) {
+  const age = context?.age;
+  if (!isRecorded(age)) return { missing: ['age'], invalid: [] };
+  return toNumber(age) == null ? { missing: [], invalid: ['age'] } : null;
 }
 
 function incompleteEvaluation(missing = [], invalid = []) {
@@ -66,6 +73,9 @@ function completeEvaluation(nativeScore, nativeCategory, normalizedNutritionRisk
 }
 
 export function scoreNrs2002(answers = {}, context = {}) {
+  const ageIssue = getAgeIssue(context);
+  if (ageIssue) return incompleteEvaluation(ageIssue.missing, ageIssue.invalid);
+
   const missingInitial = NRS_INITIAL_FIELDS.filter((field) => !isRecorded(answers[field]));
   if (missingInitial.length > 0) return incompleteEvaluation(missingInitial);
 
@@ -86,12 +96,15 @@ export function scoreNrs2002(answers = {}, context = {}) {
   );
   if (invalidFinal.length > 0) return incompleteEvaluation([], invalidFinal);
 
-  const agePoint = Number(context.age) >= 70 ? 1 : 0;
+  const agePoint = toNumber(context.age) >= 70 ? 1 : 0;
   const nativeScore = Number(answers.nutritionScore) + Number(answers.diseaseScore) + agePoint;
   return completeEvaluation(nativeScore, nativeScore < 3 ? '無營養風險' : '有營養風險', nativeScore < 3 ? 'LOW' : 'AT_RISK');
 }
 
 export function scoreMNutric(answers = {}, context = {}) {
+  const ageIssue = getAgeIssue(context);
+  if (ageIssue) return incompleteEvaluation(ageIssue.missing, ageIssue.invalid);
+
   const missing = MNUTRIC_FIELDS.filter((field) => !isRecorded(answers[field]));
   if (missing.length > 0) return incompleteEvaluation(missing);
 
@@ -107,7 +120,7 @@ export function scoreMNutric(answers = {}, context = {}) {
   if (preIcuDays == null || preIcuDays < 0) invalid.push('preIcuDays');
   if (invalid.length > 0) return incompleteEvaluation([], invalid);
 
-  const age = Number(context.age);
+  const age = toNumber(context.age);
   const agePoints = age < 50 ? 0 : age < 75 ? 1 : 2;
   const apachePoints = apache < 15 ? 0 : apache < 20 ? 1 : apache <= 28 ? 2 : 3;
   const sofaPoints = sofa < 6 ? 0 : sofa < 10 ? 1 : 2;
