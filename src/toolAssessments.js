@@ -458,8 +458,11 @@ export function updateToolAssessment(
   const current = store[toolId] || createEmptyToolAssessment(toolId);
   const answers = { ...current.answers, ...patch };
   const evaluation = evaluateToolAssessment(toolId, { ...current, answers }, context);
+  const preservedCompletedAt = current.nativeStatus === 'COMPLETE' && current.completedAt
+    ? current.completedAt
+    : '';
   const completedAt = evaluation.nativeStatus === 'COMPLETE'
-    ? current.completedAt || answers.completedDate || now
+    ? preservedCompletedAt || answers.completedDate || now
     : '';
 
   return {

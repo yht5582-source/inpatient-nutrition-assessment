@@ -155,6 +155,36 @@ describe('tool assessment evaluation', () => {
     assert.equal(incomplete['NRS-2002'].completedAt, '');
     assert.equal(external['MNA-SF'].completedAt, '2026-08-14');
   });
+
+  test('ignores a stale timestamp when an in-progress record first becomes complete', () => {
+    const staleCompletedAt = '2026-08-01T08:00:00.000Z';
+    const now = '2026-08-15T08:00:00.000Z';
+    const store = createInitialToolAssessments();
+    store['NRS-2002'] = {
+      ...store['NRS-2002'],
+      nativeStatus: 'IN_PROGRESS',
+      completedAt: staleCompletedAt,
+      answers: { initialBmiLow: 'no' }
+    };
+    store['MNA-SF'] = {
+      ...store['MNA-SF'],
+      nativeStatus: 'IN_PROGRESS',
+      completedAt: staleCompletedAt,
+      answers: { officialScore: '12' }
+    };
+
+    const nrs = updateToolAssessment(store, 'NRS-2002', {
+      initialWeightLoss: 'no', initialReducedIntake: 'no', initialSevereIllness: 'no'
+    }, { age: 60 }, now);
+    const external = updateToolAssessment(store, 'MNA-SF', {
+      officialCategory: '營養正常', completedDate: '2026-08-14', confirmed: true
+    }, {}, now);
+
+    assert.equal(nrs['NRS-2002'].nativeStatus, 'COMPLETE');
+    assert.equal(nrs['NRS-2002'].completedAt, now);
+    assert.equal(external['MNA-SF'].nativeStatus, 'COMPLETE');
+    assert.equal(external['MNA-SF'].completedAt, '2026-08-14');
+  });
 });
 
 describe('NRS-2002', () => {
