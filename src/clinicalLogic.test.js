@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import {
+  applyDiagnosisSelection,
+  applyWardSelection,
   calculateBmi,
   getAssessmentStatus,
   getContextValidation,
@@ -98,6 +100,52 @@ describe('patient context validation', () => {
 
     assert.equal(getContextValidation(context).isValid, false);
     assert.equal(getContextValidation({ ...context, npoReason: '醫療處置 / 手術' }).isValid, true);
+  });
+
+  test('selecting ICU ward activates the ICU pathway without clearing other pathways', () => {
+    const context = applyWardSelection(baseContext, '加護病房 ICU');
+
+    assert.equal(context.ward, '加護病房 ICU');
+    assert.equal(context.pathways.ICU, true);
+    assert.equal(context.pathways.GENERAL, true);
+  });
+
+  test('warns when ICU ward and ICU pathway are inconsistent', () => {
+    const validation = getContextValidation({
+      ...baseContext,
+      ward: '加護病房 ICU',
+      pathways: { ...baseContext.pathways, ICU: false }
+    });
+
+    assert.match(validation.warnings.join(' '), /ICU/);
+  });
+
+  for (const [diagnosis, group, key] of [
+    ['重症／敗血症', 'pathways', 'ICU'],
+    ['腎臟病／透析', 'pathways', 'RENAL'],
+    ['肝硬化／肝病', 'pathways', 'LIVER'],
+    ['活動性癌症', 'pathways', 'ONCOLOGY'],
+    ['高齡衰弱', 'pathways', 'GERIATRIC'],
+    ['心衰竭', 'modifiers', 'heartFailure'],
+    ['吞嚥障礙', 'modifiers', 'dysphagia']
+  ]) {
+    test(`${diagnosis} activates ${key} without clearing existing selections`, () => {
+      const context = applyDiagnosisSelection(baseContext, diagnosis);
+
+      assert.equal(context.diagnosis, diagnosis);
+      assert.equal(context[group][key], true);
+      assert.equal(context.pathways.GENERAL, true);
+    });
+  }
+
+  test('warns when diagnosis linkage is manually deactivated', () => {
+    const validation = getContextValidation({
+      ...baseContext,
+      diagnosis: '心衰竭',
+      modifiers: { ...baseContext.modifiers, heartFailure: false }
+    });
+
+    assert.match(validation.warnings.join(' '), /心衰竭/);
   });
 });
 

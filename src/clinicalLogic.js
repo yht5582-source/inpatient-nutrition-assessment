@@ -16,6 +16,57 @@ export const modifierLabels = {
   poorIntake: 'poor intake'
 };
 
+export const wardOptions = ['一般病房', '加護病房 ICU', '透析病房', '其他'];
+
+export const diagnosisOptions = [
+  '一般內科／營養評估',
+  '重症／敗血症',
+  '腎臟病／透析',
+  '肝硬化／肝病',
+  '活動性癌症',
+  '高齡衰弱',
+  '心衰竭',
+  '吞嚥障礙',
+  '手術／術後',
+  '其他'
+];
+
+const diagnosisLinkage = {
+  '重症／敗血症': ['pathways', 'ICU'],
+  '腎臟病／透析': ['pathways', 'RENAL'],
+  '肝硬化／肝病': ['pathways', 'LIVER'],
+  '活動性癌症': ['pathways', 'ONCOLOGY'],
+  '高齡衰弱': ['pathways', 'GERIATRIC'],
+  '心衰竭': ['modifiers', 'heartFailure'],
+  '吞嚥障礙': ['modifiers', 'dysphagia']
+};
+
+export function applyWardSelection(context, ward) {
+  return {
+    ...context,
+    ward,
+    pathways: {
+      ...context.pathways,
+      ICU: ward === '加護病房 ICU' ? true : context.pathways.ICU
+    }
+  };
+}
+
+export function applyDiagnosisSelection(context, diagnosis) {
+  const linkage = diagnosisLinkage[diagnosis];
+  if (!linkage) return { ...context, diagnosis };
+
+  const [group, key] = linkage;
+  return {
+    ...context,
+    diagnosis,
+    [group]: {
+      ...context[group],
+      [key]: true
+    }
+  };
+}
+
 export const toolRegistry = {
   'NRS-2002': {
     type: 'Nutrition screening',
@@ -129,6 +180,15 @@ export function getContextValidation(context) {
     blockers.push('選擇 CKD5D / HD / PD 路徑時，請確認腎臟治療型態。');
   }
   if (context.dietStatus === 'NPO' && !context.npoReason) blockers.push('目前飲食狀態為 NPO，請確認 NPO 原因。');
+
+  if (context.ward === '加護病房 ICU' && !context.pathways?.ICU) {
+    warnings.push('病房為加護病房 ICU，但 ICU 主要臨床路徑未啟用。');
+  }
+  const diagnosisSelection = diagnosisLinkage[context.diagnosis];
+  if (diagnosisSelection) {
+    const [group, key] = diagnosisSelection;
+    if (!context[group]?.[key]) warnings.push(`入院原因／診斷為「${context.diagnosis}」，但對應臨床選項未啟用。`);
+  }
 
   const fluidAffected = context.modifiers.edemaAscites || context.modifiers.heartFailure;
   if (fluidAffected && !isPositiveNumber(context.dryWeight)) {
