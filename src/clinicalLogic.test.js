@@ -5,6 +5,7 @@ import {
   applyWardSelection,
   calculateBmi,
   getAssessmentStatus,
+  getChineseStatus,
   getContextValidation,
   getPathway,
   getRecommendation,
@@ -179,6 +180,20 @@ describe('assessment completeness', () => {
   });
 });
 
+describe('Chinese display labels', () => {
+  test('translates result and workflow codes for display', () => {
+    assert.equal(getChineseStatus('RED'), '紅色');
+    assert.equal(getChineseStatus('UNKNOWN'), '未知');
+    assert.equal(getChineseStatus('TOOL_SCORE_PENDING'), '量表計分待完成');
+    assert.equal(getChineseStatus('RECOMMENDED'), '建議執行');
+    assert.equal(getChineseStatus('PENDING_ASSESSMENT'), '待完成評估');
+  });
+
+  test('preserves an unmapped native result instead of hiding it', () => {
+    assert.equal(getChineseStatus('NRS-2002'), 'NRS-2002');
+  });
+});
+
 describe('normalization boundaries', () => {
   test('keeps refeeding and fluid reliability separate from the native nutrition result', () => {
     const plainRecommendation = getRecommendation(baseContext);
@@ -264,7 +279,7 @@ describe('feeding route safety gate', () => {
 
     assert.equal(route.level, 'Pending');
     assert.equal(route.status, 'PENDING_ASSESSMENT');
-    assert.match(route.title, /GI tract/);
+    assert.match(route.title, /胃腸道可用性/);
   });
 
   test('routes unsafe oral feeding through EN appropriateness assessment when GI is usable', () => {
@@ -276,7 +291,7 @@ describe('feeding route safety gate', () => {
 
     assert.equal(route.level, 'R3');
     assert.equal(route.status, 'ASSESS_APPROPRIATENESS');
-    assert.match(route.title, /EN appropriateness/);
+    assert.match(route.title, /EN 適用性/);
   });
 
   test('makes feeding advancement conditional when refeeding risk is active', () => {

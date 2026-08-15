@@ -19,6 +19,7 @@ import {
   calculateBmi,
   diagnosisOptions,
   getAssessmentStatus,
+  getChineseStatus,
   getContextValidation,
   getRecommendation,
   getReferenceWeight,
@@ -454,86 +455,87 @@ function ResultScreen({ context, recommendation, overrideTool, overrideReason, a
   const referenceWeight = getReferenceWeight(context);
   return (
     <section className="screen result-screen">
-      <Panel title="Clinical Summary">
+      <Panel title="臨床摘要">
         <div className="summary-line">
           <span>{context.age} 歲 {context.sex === '未填' ? '性別未填' : `${context.sex}性`}</span>
-          <span>{context.ward}</span>
-          <span>Primary pathway: {recommendation.primaryPathway}</span>
-          <span>Assessment: {result.tool}</span>
-          <span>Status: {result.assessmentStatus}</span>
-          {overrideTool && <span>Override reason: {overrideReason}</span>}
+          <span>病房：{context.ward}</span>
+          <span>主要臨床路徑：{getChineseStatus(recommendation.primaryPathway)}</span>
+          <span>評估工具：{result.tool}</span>
+          <span>評估狀態：{getChineseStatus(result.assessmentStatus)}</span>
+          {overrideTool && <span>專業調整原因：{overrideReason}</span>}
         </div>
       </Panel>
 
       <div className="result-grid">
-        <ResultCard label="Nutrition Risk" value={result.nutritionRisk} tone={getResultTone('risk', result.nutritionRisk)} />
-        <ResultCard label="Malnutrition" value={result.malnutrition} tone={getResultTone('malnutrition', result.malnutrition)} />
-        <ResultCard label="Action Priority" value={result.priority} tone={getResultTone('priority', result.priority)} />
+        <ResultCard label="營養風險" value={result.nutritionRisk} tone={getResultTone('risk', result.nutritionRisk)} />
+        <ResultCard label="營養不良狀態" value={result.malnutrition} tone={getResultTone('malnutrition', result.malnutrition)} />
+        <ResultCard label="處置優先度" value={result.priority} tone={getResultTone('priority', result.priority)} />
       </div>
 
       <div className="wide-grid">
-        <Panel title="Native Result">
-          <Meta label={result.tool} value={result.native} />
-          <Meta label="Assessment domain" value={toolRegistry[result.tool].type} />
-          <Meta label="Result status" value={result.assessmentStatus} />
-          <Meta label="Normalization" value="Validated native scoring has not been completed" />
+        <Panel title="原始評估結果">
+          <Meta label="評估工具" value={result.tool} />
+          <Meta label="原始結果" value={getChineseStatus(result.native)} />
+          <Meta label="評估領域" value={getChineseStatus(toolRegistry[result.tool].type)} />
+          <Meta label="結果狀態" value={getChineseStatus(result.assessmentStatus)} />
+          <Meta label="正規化說明" value="尚未完成經驗證量表的原始計分" />
         </Panel>
-        <Panel title="Why this result?">
+        <Panel title="結果判斷依據">
           <div className="reason-list vertical">
             {result.reasons.slice(0, 8).map((reason) => (
               <span key={reason}>
                 <Info size={14} />
-                {reason}
+                {getChineseStatus(reason)}
               </span>
             ))}
           </div>
         </Panel>
       </div>
 
-      <Panel title="Safety Alerts">
+      <Panel title="安全警示">
         <div className="alert-list">
           {result.safetyFlags.length === 0 && (
-            <div className="empty-state"><BadgeCheck size={18} /><span>No active safety alerts</span></div>
+            <div className="empty-state"><BadgeCheck size={18} /><span>目前無安全警示</span></div>
           )}
           {result.safetyFlags.map((flag) => (
             <div key={flag} className="alert-row">
               <ShieldAlert size={18} />
               <div>
-                <strong>{flag}</strong>
-                <span>{flag === 'Refeeding risk' ? '營養供應增加前需完成 electrolyte / thiamine / advancement plan。' : '此條件會影響 feeding route，需先完成安全確認。'}</span>
+                <strong>{getChineseStatus(flag)}</strong>
+                <span>{flag === 'Refeeding risk' ? '營養供應增加前需完成電解質、硫胺素與漸進供應計畫。' : '此條件會影響營養供應途徑，需先完成安全確認。'}</span>
               </div>
-              <StatusChip tone={flag === 'Refeeding risk' || flag === 'Oral feeding unsafe' ? 'red' : 'amber'}>{flag === 'Oral feeding unsafe' ? 'BLOCKING' : 'PENDING'}</StatusChip>
+              <StatusChip tone={flag === 'Refeeding risk' || flag === 'Oral feeding unsafe' ? 'red' : 'amber'}>{getChineseStatus(flag === 'Oral feeding unsafe' ? 'BLOCKING' : 'PENDING')}</StatusChip>
             </div>
           ))}
         </div>
       </Panel>
 
       {result.dataQualityFlags.length > 0 && (
-        <Panel title="Data Quality Alerts">
+        <Panel title="資料品質提醒">
           <div className="alert-list">
             {result.dataQualityFlags.map((flag) => (
               <div key={flag} className="alert-row">
                 <Info size={18} />
-                <div><strong>{flag}</strong><span>此項目影響資料可靠度或後續路徑判斷。</span></div>
-                <StatusChip tone="gray">REVIEW</StatusChip>
+                <div><strong>{getChineseStatus(flag)}</strong><span>此項目影響資料可靠度或後續路徑判斷。</span></div>
+                <StatusChip tone="gray">{getChineseStatus('REVIEW')}</StatusChip>
               </div>
             ))}
           </div>
         </Panel>
       )}
 
-      <Panel title="Nutrition Care Bundle">
+      <Panel title="營養照護組合">
         <div className="bundle-grid">
-          <BundleItem icon={Stethoscope} title="Professional review" status={result.priority === 'GREEN' ? 'CONSIDER' : 'RECOMMENDED'} text="由營養師完成個別化 Nutrition Care Plan。" />
-          <BundleItem icon={Utensils} title="Feeding route" status={route.status} text={route.title} />
-          <BundleItem icon={Activity} title="Requirement profile" status="RECOMMENDED" text={`Reference weight: ${referenceWeight.value ?? 'unavailable'} kg (${referenceWeight.type}); renal / modifier rule set required.`} />
-          <BundleItem icon={Waves} title="Fluid / electrolytes" status="CONSIDER" text="HF / renal / edema 情境需與治療團隊協調 fluid、Na、K、P。" />
+          <BundleItem icon={Stethoscope} title="專業營養評估" status={result.priority === 'GREEN' ? 'CONSIDER' : 'RECOMMENDED'} text="由營養師完成個別化營養照護計畫。" />
+          <BundleItem icon={Utensils} title="營養供應途徑" status={route.status} text={route.title} />
+          <BundleItem icon={Activity} title="營養需求設定" status="RECOMMENDED" text={`參考體重：${referenceWeight.value ?? '無可用資料'} kg（${getChineseStatus(referenceWeight.type)}）；需套用腎臟病與特殊因子規則。`} />
+          <BundleItem icon={Waves} title="體液與電解質" status="CONSIDER" text="心衰竭、腎臟病或水腫情境，需與治療團隊協調體液、鈉、鉀與磷管理。" />
         </div>
       </Panel>
 
-      <Panel title="Monitoring & Reassessment">
+      <Panel title="監測與重新評估">
         <div className="check-grid">
-          {['Oral intake %', 'Weight / dry weight', 'Fluid balance', 'Electrolytes', 'GI tolerance', 'Swallow status', 'Nutrition intervention delivery', '48-72h or pathway-based reassessment'].map((item) => (
+          {['口服攝取百分比', '目前體重／乾體重', '體液平衡', '電解質', '胃腸耐受性', '吞嚥狀態', '營養介入實際供應量', '48–72 小時或依臨床路徑重新評估'].map((item) => (
             <div key={item}>
               <BadgeCheck size={16} />
               {item}
@@ -542,19 +544,19 @@ function ResultScreen({ context, recommendation, overrideTool, overrideReason, a
         </div>
       </Panel>
 
-      <Panel title="Documentation Summary">
-        <pre className="note-preview">{`Nutrition assessment summary
-Primary pathway: ${recommendation.primaryPathway}
-Assessment: ${result.tool}
-Native result: ${result.native}
-Nutrition risk: ${result.nutritionRisk}
-Malnutrition status: ${result.malnutrition}
-Clinical priority: ${result.priority}
-Assessment status: ${result.assessmentStatus}
-Relevant modifiers: ${recommendation.modifiers.map((item) => modifierLabels[item]).filter(Boolean).join(', ')}
-${overrideTool ? `Professional override: ${overrideTool}; reason: ${overrideReason}\n` : ''}Data quality: ${result.dataQualityFlags.join(', ') || 'No active data-quality flags'}
-Nutrition care: ${route.title}
-Safety: ${result.safetyFlags.join(', ') || 'No active safety flags'}`}</pre>
+      <Panel title="病歷紀錄摘要">
+        <pre className="note-preview">{`營養評估摘要
+主要臨床路徑：${getChineseStatus(recommendation.primaryPathway)}
+評估工具：${result.tool}
+原始結果：${getChineseStatus(result.native)}
+營養風險：${getChineseStatus(result.nutritionRisk)}
+營養不良狀態：${getChineseStatus(result.malnutrition)}
+處置優先度：${getChineseStatus(result.priority)}
+評估狀態：${getChineseStatus(result.assessmentStatus)}
+相關特殊因子：${recommendation.modifiers.map((item) => getChineseStatus(modifierLabels[item])).filter(Boolean).join('、') || '無'}
+${overrideTool ? `專業調整：${overrideTool}；原因：${overrideReason}\n` : ''}資料品質：${result.dataQualityFlags.map(getChineseStatus).join('、') || '目前無資料品質提醒'}
+營養照護：${route.title}
+安全警示：${result.safetyFlags.map(getChineseStatus).join('、') || '目前無安全警示'}`}</pre>
       </Panel>
 
       <FooterActions back="回評估" next="完成並建立新評估" onBack={() => setActiveStep('assessment')} onNext={onFinish} />
@@ -681,8 +683,8 @@ function ResultCard({ label, value, tone }) {
   return (
     <section className={cx('result-card', tone)}>
       <span>{label}</span>
-      <strong>{value}</strong>
-      <small>{label === 'Nutrition Risk' ? '營養風險' : label === 'Malnutrition' ? '營養不良狀態' : '處置優先度'}</small>
+      <strong className="result-value">{getChineseStatus(value)}</strong>
+      <small>{label === '處置優先度' ? '臨床處置層級' : '正規化結果'}</small>
     </section>
   );
 }
@@ -695,7 +697,7 @@ function BundleItem({ icon: Icon, title, status, text }) {
       <div>
         <div className="bundle-title">
           <strong>{title}</strong>
-          <StatusChip tone={tone}>{status}</StatusChip>
+          <StatusChip tone={tone}>{getChineseStatus(status)}</StatusChip>
         </div>
         <span>{text}</span>
       </div>

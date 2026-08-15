@@ -16,6 +16,71 @@ export const modifierLabels = {
   poorIntake: 'poor intake'
 };
 
+const chineseStatusLabels = {
+  RED: '紅色',
+  AMBER: '琥珀色',
+  GREEN: '綠色',
+  GRAY: '灰色',
+  HIGH: '高風險',
+  AT_RISK: '有風險',
+  SEVERE: '嚴重',
+  MODERATE: '中度',
+  UNKNOWN: '未知',
+  NOT_ASSESSED: '尚未評估',
+  NOT_APPLICABLE: '不適用',
+  INCOMPLETE: '評估未完成',
+  NOT_AVAILABLE: '工具目前不可用',
+  TOOL_SCORE_PENDING: '量表計分待完成',
+  RECOMMENDED: '建議執行',
+  CONSIDER: '可考慮',
+  CONDITIONAL: '有條件執行',
+  PENDING_ASSESSMENT: '待完成評估',
+  ASSESS_APPROPRIATENESS: '評估適用性',
+  CONTINUE_AND_REVIEW: '持續執行並重新評估',
+  BLOCKING: '阻擋中',
+  PENDING: '待處理',
+  REVIEW: '請檢視',
+  'Incomplete assessment': '評估尚未完成',
+  'Tool unavailable pending license review': '工具尚待授權審查，目前不可用',
+  'Validated tool scoring not completed': '尚未完成經驗證量表計分',
+  'Validated digital scoring is not available': '目前沒有可用的經驗證數位計分',
+  'Required assessment fields are missing': '必要評估欄位尚未完成',
+  'Dry weight': '乾體重',
+  'Measured weight': '測量體重',
+  'Measured weight (review required)': '測量體重（需檢視）',
+  'Unavailable': '無可用資料',
+  'not assessed': '尚未評估',
+  'Oral feeding unsafe': '口服進食不安全',
+  'Swallowing safety pending': '吞嚥安全待確認',
+  'Refeeding risk': '再餵食症候群風險',
+  'Fluid-affected weight': '體液狀態影響體重',
+  'Swallowing status conflicts with dysphagia modifier': '吞嚥狀態與吞嚥障礙特殊因子不一致',
+  'GI tract uncertain': '胃腸道可用性不確定',
+  'Intake not assessed': '攝取量尚未評估',
+  'Intake status conflicts with poor-intake modifier': '攝取狀態與攝取不足特殊因子不一致',
+  'Nutrition screening': '營養風險篩檢',
+  'Geriatric screening': '高齡營養篩檢',
+  'Nutrition assessment': '營養評估',
+  'Liver nutrition risk': '肝病營養風險評估',
+  'Oncology triage': '腫瘤營養分流',
+  'ICU nutrition risk': '加護病房營養風險評估',
+  'cirrhosis': '肝硬化',
+  'active cancer': '活動性癌症',
+  'geriatric': '高齡病人',
+  'general adult': '一般成人',
+  'heart failure': '心衰竭',
+  'dysphagia': '吞嚥障礙',
+  'edema / ascites': '水腫／腹水',
+  'refeeding risk': '再餵食症候群風險',
+  'age >=65': '年齡 65 歲以上',
+  'poor intake': '攝取不足'
+};
+
+export function getChineseStatus(value) {
+  if (value == null || value === '') return '未提供';
+  return chineseStatusLabels[value] || value;
+}
+
 export const wardOptions = ['一般病房', '加護病房 ICU', '透析病房', '其他'];
 
 export const diagnosisOptions = [
@@ -361,59 +426,59 @@ export function getRoute(context, answers, result) {
       return {
         ...route,
         title: `${route.title}；任何營養供應增加前先完成再餵食安全流程`,
-        why: [...route.why, 'Refeeding safety workflow required before nutrition advancement']
+        why: [...route.why, '增加營養供應前需完成再餵食安全流程']
       };
     }
     return {
       ...route,
       title: `完成再餵食安全流程後，${route.title}`,
       status: 'CONDITIONAL',
-      why: [...route.why, 'Refeeding safety workflow required before nutrition advancement']
+      why: [...route.why, '增加營養供應前需完成再餵食安全流程']
     };
   };
 
   if (gi === 'uncertain' || !gi) {
     return conditionForRefeeding({
       level: 'Pending',
-      title: '先確認 GI tract 可用性，再評估 EN / PN appropriateness',
+      title: '先確認胃腸道可用性，再評估 EN／PN 適用性',
       status: 'PENDING_ASSESSMENT',
-      why: ['GI tract availability 尚未確認']
+      why: ['胃腸道可用性尚未確認']
     });
   }
 
   if (gi === 'unavailable') {
     return conditionForRefeeding({
       level: 'R4',
-      title: '評估 PN appropriateness',
+      title: '評估 PN 適用性',
       status: 'ASSESS_APPROPRIATENESS',
-      why: ['GI tract unavailable', '無法以 oral / enteral route 滿足需求']
+      why: ['胃腸道無法使用', '無法以口服或腸道營養途徑滿足需求']
     });
   }
 
   if (context.dietStatus === 'NPO') {
     return conditionForRefeeding({
       level: 'Pending',
-      title: '目前為 NPO；先確認 NPO 原因與解除條件，再評估 nutrition support appropriateness',
+      title: '目前為 NPO；先確認 NPO 原因與解除條件，再評估營養支持適用性',
       status: 'PENDING_ASSESSMENT',
-      why: [`NPO reason: ${context.npoReason || 'not assessed'}`, 'Oral feeding recommendation blocked while NPO is active']
+      why: [`NPO 原因：${context.npoReason || '尚未評估'}`, 'NPO 期間不可直接建議口服進食']
     });
   }
 
   if (context.dietStatus === '管灌') {
     return conditionForRefeeding({
       level: 'R3',
-      title: '檢視目前 EN appropriateness、供應量與 GI tolerance',
+      title: '檢視目前 EN 適用性、供應量與胃腸耐受性',
       status: 'CONTINUE_AND_REVIEW',
-      why: ['Current route: enteral tube feeding', 'GI tract is usable']
+      why: ['目前途徑為管灌腸道營養', '胃腸道可使用']
     });
   }
 
   if (oralSafety !== 'safe') {
     return conditionForRefeeding({
       level: 'R3',
-      title: oralSafety === 'unsafe' ? 'Oral feeding 不安全，評估 EN appropriateness' : '先完成吞嚥安全評估，必要時評估 EN appropriateness',
+      title: oralSafety === 'unsafe' ? '口服進食不安全，評估 EN 適用性' : '先完成吞嚥安全評估，必要時評估 EN 適用性',
       status: oralSafety === 'unsafe' ? 'ASSESS_APPROPRIATENESS' : 'PENDING_ASSESSMENT',
-      why: ['Oral feeding safety 未通過', 'GI tract 可使用']
+      why: ['口服進食安全未通過', '胃腸道可使用']
     });
   }
 
@@ -422,24 +487,24 @@ export function getRoute(context, answers, result) {
       level: 'Pending',
       title: '先確認目前攝取量，再決定營養介入層級',
       status: 'PENDING_ASSESSMENT',
-      why: ['Intake adequacy 尚未確認']
+      why: ['攝取充足度尚未確認']
     });
   }
 
   if (intake === '>=75%') {
     return conditionForRefeeding({
       level: 'R0',
-      title: '維持 therapeutic oral diet 並追蹤攝取',
+      title: '維持治療飲食並追蹤口服攝取量',
       status: 'RECOMMENDED',
-      why: ['Oral route safe', 'Intake currently adequate']
+      why: ['口服進食安全', '目前攝取量充足']
     });
   }
 
   return conditionForRefeeding({
     level: result.priority === 'RED' ? 'R2' : 'R1',
-    title: 'Optimize oral nutrition，並 consider ONS',
+    title: '優化口服營養，並考慮 ONS',
     status: 'RECOMMENDED',
-    why: ['Oral route safe', '目前攝取不足', '若持續不足再評估 EN']
+    why: ['口服進食安全', '目前攝取不足', '若持續不足再評估 EN']
   });
 }
 
