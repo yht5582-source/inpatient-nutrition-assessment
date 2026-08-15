@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity,
   AlertTriangle,
@@ -32,6 +32,12 @@ import {
   toolRegistry,
   wardOptions
 } from './clinicalLogic.js';
+import ToolAssessmentForm from './ToolAssessmentForm.jsx';
+import {
+  createInitialToolAssessments,
+  evaluateToolAssessment,
+  updateToolAssessment
+} from './toolAssessments.js';
 
 const steps = [
   { id: 'home', title: '首頁', mobileTitle: '首頁', subtitle: 'Home', icon: Home },
@@ -312,7 +318,7 @@ function ContextScreen({ context, setContext, recommendation, contextValidation,
 function ToolScreen({ recommendation, overrideTool, setOverrideTool, overrideReason, setOverrideReason, setActiveStep }) {
   const selectedTool = overrideTool || recommendation.primaryTool;
   const registry = toolRegistry[selectedTool];
-  const canStart = registry.licenseStatus === 'APPROVED' && (!overrideTool || overrideReason.trim().length > 0);
+  const canStart = !overrideTool || overrideReason.trim().length > 0;
   const selectTool = (tool) => {
     if (tool === recommendation.primaryTool) {
       setOverrideTool('');
@@ -332,7 +338,7 @@ function ToolScreen({ recommendation, overrideTool, setOverrideTool, overrideRea
               <h2>{selectedTool}</h2>
               <p>{registry.population} · {registry.type}</p>
             </div>
-            <StatusChip tone={registry.licenseStatus === 'APPROVED' ? 'blue' : 'amber'}>{registry.licenseStatus}</StatusChip>
+            <StatusChip tone="blue">{registry.modeLabel}</StatusChip>
           </div>
           <div className="why-box">
             <strong>為什麼推薦？</strong>
@@ -344,7 +350,7 @@ function ToolScreen({ recommendation, overrideTool, setOverrideTool, overrideRea
             ))}
           </div>
           <button className="primary-button" onClick={() => setActiveStep('assessment')} disabled={!canStart}>
-            {registry.licenseStatus === 'APPROVED' ? '蒐集共同評估資料' : '工具待授權審查'}
+            開始評估
           </button>
         </Panel>
 
@@ -356,7 +362,7 @@ function ToolScreen({ recommendation, overrideTool, setOverrideTool, overrideRea
               <span>系統判斷</span>
             </div>
             {recommendation.alternatives.map((tool) => (
-              <button key={tool.tool} className="table-row" onClick={() => selectTool(tool.tool)} disabled={toolRegistry[tool.tool].licenseStatus !== 'APPROVED'}>
+              <button key={tool.tool} className="table-row" onClick={() => selectTool(tool.tool)}>
                 <strong>{tool.tool}</strong>
                 <span>{tool.use}</span>
                 <StatusChip>{tool.judgment}</StatusChip>
@@ -368,7 +374,7 @@ function ToolScreen({ recommendation, overrideTool, setOverrideTool, overrideRea
         <Panel title="Professional Override">
           <div className="override-grid">
             {Object.keys(toolRegistry).map((tool) => (
-              <button key={tool} className={cx('choice-button', selectedTool === tool && 'active')} onClick={() => selectTool(tool)} disabled={toolRegistry[tool].licenseStatus !== 'APPROVED' && tool !== recommendation.primaryTool}>
+              <button key={tool} className={cx('choice-button', selectedTool === tool && 'active')} onClick={() => selectTool(tool)}>
                 {tool}
               </button>
             ))}
@@ -383,23 +389,41 @@ function ToolScreen({ recommendation, overrideTool, setOverrideTool, overrideRea
       </main>
       <aside className="side-panel">
         <Panel title="Tool Registry">
-          <Meta label="Type" value={registry.type} />
-          <Meta label="Target population" value={registry.population} />
-          <Meta label="Version" value={registry.version} />
-          <Meta label="License status" value={registry.licenseStatus} />
+          <Meta label="評估領域" value={registry.type} />
+          <Meta label="適用族群" value={registry.population} />
+          <Meta label="評估方式" value={registry.modeLabel} />
+          <Meta label="來源版本" value={registry.version} />
           <Meta label="Override" value={overrideTool ? (overrideReason.trim() ? 'Reason recorded in this assessment' : 'Reason required') : 'System recommendation'} />
         </Panel>
       </aside>
-      <FooterActions back="回病人背景" next="蒐集共同評估資料" onBack={() => setActiveStep('context')} onNext={() => setActiveStep('assessment')} nextDisabled={!canStart} />
+      <FooterActions back="回病人背景" next="開始評估" onBack={() => setActiveStep('context')} onNext={() => setActiveStep('assessment')} nextDisabled={!canStart} />
     </section>
   );
 }
 
-function AssessmentScreen({ context, recommendation, overrideTool, answers, setAnswers, setActiveStep, syncAssessmentField }) {
+function AssessmentScreen({
+  context,
+  recommendation,
+  overrideTool,
+  answers,
+  setAnswers,
+  setActiveStep,
+  syncAssessmentField,
+  toolAssessments,
+  setToolAssessments,
+  focusNativeAssessment,
+  setFocusNativeAssessment
+}) {
   const assessmentStatus = getAssessmentStatus(answers);
   const bmi = calculateBmi(context.weight, context.height);
   const referenceWeight = getReferenceWeight(context);
   const fluidAffected = context.modifiers.edemaAscites || context.modifiers.heartFailure;
+  const selectedTool = overrideTool || recommendation.primaryTool;
+  const nativeAssessmentRef = useRef(null);
+  const nativeEvaluation = useMemo(
+    () => evaluateToolAssessment(selectedTool, toolAssessments[selectedTool], context),
+    [context, selectedTool, toolAssessments]
+  );
   const updateAnswer = (questionId, value) => {
     if (['intake', 'gi', 'swallow'].includes(questionId)) {
       syncAssessmentField(questionId, value);
@@ -408,6 +432,16 @@ function AssessmentScreen({ context, recommendation, overrideTool, answers, setA
 
     setAnswers((current) => ({ ...current, [questionId]: value }));
   };
+  const updateSelectedToolAssessment = (patch) => {
+    if (!selectedTool) return;
+    setToolAssessments((current) => updateToolAssessment(current, selectedTool, patch, context));
+  };
+
+  useEffect(() => {
+    if (!focusNativeAssessment) return;
+    nativeAssessmentRef.current?.scrollIntoView({ block: 'start' });
+    setFocusNativeAssessment(false);
+  }, [focusNativeAssessment, setFocusNativeAssessment]);
 
   return (
     <section className="screen grid-screen">
@@ -433,6 +467,16 @@ function AssessmentScreen({ context, recommendation, overrideTool, answers, setA
             ))}
           </div>
         </Panel>
+        <div id="native-tool-assessment" ref={nativeAssessmentRef}>
+          <Panel title={`工具原始評估：${selectedTool}`} action={`${nativeEvaluation.percent}%`}>
+            <ToolAssessmentForm
+              toolId={selectedTool}
+              context={context}
+              assessment={nativeEvaluation}
+              onChange={updateSelectedToolAssessment}
+            />
+          </Panel>
+        </div>
         <Panel title="Computed values">
           <div className="metric-grid">
             <Metric label="BMI" value={bmi ?? '—'} />
@@ -726,13 +770,12 @@ export default function App() {
   const [overrideTool, setOverrideTool] = useState('');
   const [overrideReason, setOverrideReason] = useState('');
   const [answers, setAnswers] = useState(createInitialAnswers);
+  const [toolAssessments, setToolAssessments] = useState(createInitialToolAssessments);
+  const [focusNativeAssessment, setFocusNativeAssessment] = useState(false);
   const recommendation = useMemo(() => getRecommendation(context), [context]);
   const contextValidation = useMemo(() => getContextValidation(context), [context]);
   const assessmentStatus = useMemo(() => getAssessmentStatus(answers), [answers]);
-  const selectedTool = overrideTool || recommendation?.primaryTool;
-  const selectedRegistry = selectedTool ? toolRegistry[selectedTool] : null;
   const canStartAssessment = contextValidation.isValid
-    && selectedRegistry?.licenseStatus === 'APPROVED'
     && (!overrideTool || overrideReason.trim().length > 0);
   const canNavigate = {
     home: true,
@@ -757,6 +800,8 @@ export default function App() {
   const finishAssessment = () => {
     setContext(createInitialContext());
     setAnswers(createInitialAnswers());
+    setToolAssessments(createInitialToolAssessments());
+    setFocusNativeAssessment(false);
     setOverrideTool('');
     setOverrideReason('');
     setActiveStep('home');
@@ -791,6 +836,10 @@ export default function App() {
             setAnswers={setAnswers}
             setActiveStep={navigateTo}
             syncAssessmentField={syncAssessmentField}
+            toolAssessments={toolAssessments}
+            setToolAssessments={setToolAssessments}
+            focusNativeAssessment={focusNativeAssessment}
+            setFocusNativeAssessment={setFocusNativeAssessment}
           />
         )}
         {activeStep === 'result' && recommendation && <ResultScreen context={context} recommendation={recommendation} overrideTool={overrideTool} overrideReason={overrideReason} answers={answers} setActiveStep={navigateTo} onFinish={finishAssessment} />}

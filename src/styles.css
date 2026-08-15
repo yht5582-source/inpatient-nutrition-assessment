@@ -538,7 +538,12 @@ button {
   font-size: 13px;
 }
 
+.main-stack,
 .side-panel {
+  min-width: 0;
+}
+
+.main-stack > * {
   min-width: 0;
 }
 
@@ -853,6 +858,156 @@ button {
   gap: 8px;
 }
 
+.native-assessment {
+  min-width: 0;
+  display: grid;
+  gap: 16px;
+}
+
+.native-status {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 12px;
+  color: #425260;
+  background: #f5f8fa;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--gray);
+  border-radius: 6px;
+}
+
+.native-status.complete {
+  color: #17643f;
+  background: #f0fbf4;
+  border-color: #bfe5cf;
+  border-left-color: var(--green);
+}
+
+.native-status span {
+  color: var(--muted);
+  font-size: 13px;
+  text-align: right;
+}
+
+.native-field-grid {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.native-field-grid > *,
+.native-assessment .field,
+.native-assessment .question {
+  min-width: 0;
+}
+
+.native-question-stack {
+  margin-top: 0;
+}
+
+.native-choice-field {
+  margin: 0;
+}
+
+.native-choice-field legend {
+  padding: 0;
+  font-weight: 700;
+}
+
+.native-assessment .option {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.native-assessment select,
+.native-assessment select option {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+}
+
+.field-note {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.field-error {
+  display: block;
+  color: var(--red);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.readonly-field {
+  align-content: start;
+  min-height: 70px;
+  padding: 10px 11px;
+  background: #f7fafb;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.readonly-field strong {
+  overflow-wrap: anywhere;
+}
+
+.official-tool-row {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  background: #f7fafb;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.official-tool-row .outline-button {
+  flex: 0 1 auto;
+  margin: 0;
+  text-decoration: none;
+}
+
+.official-tool-row span {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.completion-check {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: #fff;
+  color: #344657;
+  font-weight: 700;
+}
+
+.completion-check.invalid {
+  border-color: #efb8b3;
+  background: #fff6f5;
+}
+
+.completion-check input {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  accent-color: var(--teal);
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1127,8 +1282,20 @@ button {
   .select-row,
   .toggle-grid,
   .metric-grid,
-  .check-grid {
+  .check-grid,
+  .native-field-grid {
     grid-template-columns: 1fr;
+  }
+
+  .native-status,
+  .official-tool-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .native-status span,
+  .official-tool-row span {
+    text-align: left;
   }
 
   .recommendation-row {
