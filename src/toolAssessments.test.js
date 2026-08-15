@@ -6,6 +6,7 @@ import {
   createInitialToolAssessments,
   scoreMNutric,
   scoreNrs2002,
+  scoreRfhNpt,
   updateToolAssessment
 } from './toolAssessments.js';
 
@@ -150,5 +151,94 @@ describe('mNUTRIC', () => {
 
     assert.equal(result.nativeStatus, 'IN_PROGRESS');
     assert.deepEqual(result.invalid, ['apacheIi', 'sofa', 'comorbidities', 'preIcuDays']);
+  });
+});
+
+describe('RFH-NPT', () => {
+  test('classifies alcoholic hepatitis or tube feeding directly as high risk', () => {
+    const result = scoreRfhNpt({ alcoholicHepatitis: 'yes', tubeFeeding: 'no' }, { height: 170, weight: 70 });
+
+    assert.equal(result.nativeScore, 6);
+    assert.equal(result.nativeCategory, '高風險');
+    assert.equal(result.normalizedNutritionRisk, 'HIGH');
+  });
+
+  test('scores the no-fluid-overload BMI path', () => {
+    const result = scoreRfhNpt({
+      alcoholicHepatitis: 'no', tubeFeeding: 'no', fluidOverload: 'no',
+      weightLossPercent: '7', acuteNoIntakeFiveDays: 'no'
+    }, { height: 170, weight: 53.5 });
+
+    assert.equal(result.nativeScore, 2);
+    assert.equal(result.nativeCategory, '高風險');
+  });
+
+  test('scores only the fluid-overload branch fields', () => {
+    const result = scoreRfhNpt({
+      alcoholicHepatitis: 'no', tubeFeeding: 'no', fluidOverload: 'yes',
+      incompleteMealsFromFluid: 'sometimes', intakeReducedFifty: 'yes', fluidWeightLoss: 'uncertain'
+    }, { height: 170, weight: 90 });
+
+    assert.equal(result.nativeScore, 5);
+    assert.equal(result.nativeCategory, '高風險');
+  });
+
+  test('does not require hidden fields from the other RFH branch', () => {
+    const result = scoreRfhNpt({
+      alcoholicHepatitis: 'no', tubeFeeding: 'no', fluidOverload: 'yes',
+      incompleteMealsFromFluid: 'no', intakeReducedFifty: 'no', fluidWeightLoss: 'no'
+    }, { height: 170, weight: 70 });
+
+    assert.equal(result.nativeStatus, 'COMPLETE');
+    assert.equal(result.nativeScore, 1);
+    assert.equal(result.nativeCategory, '中度風險');
+  });
+
+  test('maps BMI boundaries to the exact RFH points', () => {
+    const answers = {
+      alcoholicHepatitis: 'no', tubeFeeding: 'no', fluidOverload: 'no',
+      weightLossPercent: '0', acuteNoIntakeFiveDays: 'no'
+    };
+
+    assert.equal(scoreRfhNpt(answers, { height: 100, weight: 20.1 }).nativeScore, 0);
+    assert.equal(scoreRfhNpt(answers, { height: 100, weight: 20 }).nativeScore, 1);
+    assert.equal(scoreRfhNpt(answers, { height: 100, weight: 18.4 }).nativeScore, 2);
+  });
+
+  test('maps weight-loss boundaries to the exact RFH points', () => {
+    const answers = {
+      alcoholicHepatitis: 'no', tubeFeeding: 'no', fluidOverload: 'no',
+      acuteNoIntakeFiveDays: 'no'
+    };
+
+    assert.equal(scoreRfhNpt({ ...answers, weightLossPercent: '4.9' }, { height: 100, weight: 20.1 }).nativeScore, 0);
+    assert.equal(scoreRfhNpt({ ...answers, weightLossPercent: '5' }, { height: 100, weight: 20.1 }).nativeScore, 1);
+    assert.equal(scoreRfhNpt({ ...answers, weightLossPercent: '10' }, { height: 100, weight: 20.1 }).nativeScore, 1);
+    assert.equal(scoreRfhNpt({ ...answers, weightLossPercent: '10.1' }, { height: 100, weight: 20.1 }).nativeScore, 2);
+  });
+
+  test('requires positive height and weight for the no-fluid-overload BMI path', () => {
+    const answers = {
+      alcoholicHepatitis: 'no', tubeFeeding: 'no', fluidOverload: 'no',
+      weightLossPercent: '0', acuteNoIntakeFiveDays: 'no'
+    };
+
+    const missing = scoreRfhNpt(answers, { height: '', weight: 70 });
+    const invalid = scoreRfhNpt(answers, { height: 0, weight: -1 });
+
+    assert.equal(missing.nativeStatus, 'IN_PROGRESS');
+    assert.deepEqual(missing.missing, ['height']);
+    assert.equal(invalid.nativeStatus, 'IN_PROGRESS');
+    assert.deepEqual(invalid.invalid, ['height', 'weight']);
+  });
+
+  test('reports only the visible branch field when RFH-NPT is incomplete', () => {
+    const result = scoreRfhNpt({
+      alcoholicHepatitis: 'no', tubeFeeding: 'no', fluidOverload: 'yes',
+      incompleteMealsFromFluid: 'sometimes', intakeReducedFifty: 'yes'
+    }, { height: 170, weight: 70 });
+
+    assert.equal(result.nativeStatus, 'IN_PROGRESS');
+    assert.deepEqual(result.missing, ['fluidWeightLoss']);
   });
 });

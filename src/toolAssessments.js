@@ -22,6 +22,8 @@ const NRS_INITIAL_FIELDS = [
 
 const NRS_FINAL_FIELDS = ['nutritionScore', 'diseaseScore'];
 const MNUTRIC_FIELDS = ['apacheIi', 'sofa', 'comorbidities', 'preIcuDays'];
+const RFH_INITIAL_FIELDS = ['alcoholicHepatitis', 'tubeFeeding'];
+const RFH_FLUID_FIELDS = ['incompleteMealsFromFluid', 'intakeReducedFifty', 'fluidWeightLoss'];
 
 function isRecorded(value) {
   return value !== '' && value != null;
@@ -130,6 +132,113 @@ export function scoreMNutric(answers = {}, context = {}) {
   const highRisk = nativeScore >= 5;
 
   return completeEvaluation(nativeScore, highRisk ? '高分' : '低分', highRisk ? 'HIGH' : 'LOW');
+}
+
+function classifyRfhScore(score) {
+  if (score === 0) return { nativeScore: score, nativeCategory: '低風險', normalizedNutritionRisk: 'LOW' };
+  if (score === 1) return { nativeScore: score, nativeCategory: '中度風險', normalizedNutritionRisk: 'AT_RISK' };
+  return { nativeScore: score, nativeCategory: '高風險', normalizedNutritionRisk: 'HIGH' };
+}
+
+function completeRfhEvaluation(score) {
+  return {
+    nativeStatus: 'COMPLETE',
+    ...classifyRfhScore(score),
+    missing: [],
+    normalizedMalnutrition: 'NOT_APPLICABLE'
+  };
+}
+
+function getPositiveMeasurementIssue(context) {
+  const missing = [];
+  const invalid = [];
+  const measurements = [['height', context?.height], ['weight', context?.weight]];
+
+  for (const [field, value] of measurements) {
+    if (!isRecorded(value)) {
+      missing.push(field);
+      continue;
+    }
+    const number = toNumber(value);
+    if (number == null || number <= 0) invalid.push(field);
+  }
+
+  return { missing, invalid };
+}
+
+export function scoreRfhNpt(answers = {}, context = {}) {
+  const missingInitial = RFH_INITIAL_FIELDS.filter((field) => !isRecorded(answers[field]));
+  if (missingInitial.length > 0) return incompleteEvaluation(missingInitial);
+
+  const invalidInitial = RFH_INITIAL_FIELDS.filter(
+    (field) => answers[field] !== 'yes' && answers[field] !== 'no'
+  );
+  if (invalidInitial.length > 0) return incompleteEvaluation([], invalidInitial);
+
+  if (answers.alcoholicHepatitis === 'yes' || answers.tubeFeeding === 'yes') {
+    return completeRfhEvaluation(6);
+  }
+
+  if (!isRecorded(answers.fluidOverload)) return incompleteEvaluation(['fluidOverload']);
+  if (answers.fluidOverload !== 'yes' && answers.fluidOverload !== 'no') {
+    return incompleteEvaluation([], ['fluidOverload']);
+  }
+
+  if (answers.fluidOverload === 'no') {
+    const missing = ['weightLossPercent', 'acuteNoIntakeFiveDays']
+      .filter((field) => !isRecorded(answers[field]));
+    const invalid = [];
+
+    if (isRecorded(answers.weightLossPercent) && toNumber(answers.weightLossPercent) == null) {
+      invalid.push('weightLossPercent');
+    }
+    if (
+      isRecorded(answers.acuteNoIntakeFiveDays)
+      && answers.acuteNoIntakeFiveDays !== 'yes'
+      && answers.acuteNoIntakeFiveDays !== 'no'
+    ) {
+      invalid.push('acuteNoIntakeFiveDays');
+    }
+
+    const measurementIssue = getPositiveMeasurementIssue(context);
+    if (measurementIssue.missing.length > 0) missing.push(...measurementIssue.missing);
+    invalid.push(...measurementIssue.invalid);
+    if (missing.length > 0 || invalid.length > 0) return incompleteEvaluation(missing, invalid);
+
+    const heightCm = toNumber(context.height);
+    const weightKg = toNumber(context.weight);
+    const bmi = weightKg / (heightCm / 100) ** 2;
+    const bmiPoints = bmi > 20 ? 0 : bmi >= 18.5 ? 1 : 2;
+    const weightLossPoints = toNumber(answers.weightLossPercent) < 5
+      ? 0
+      : toNumber(answers.weightLossPercent) <= 10 ? 1 : 2;
+    const acutePoints = answers.acuteNoIntakeFiveDays === 'yes' ? 2 : 0;
+    return completeRfhEvaluation(bmiPoints + weightLossPoints + acutePoints);
+  }
+
+  const missing = RFH_FLUID_FIELDS.filter((field) => !isRecorded(answers[field]));
+  const invalid = [];
+  const mealPoints = { no: 0, sometimes: 1, yes: 2 }[answers.incompleteMealsFromFluid];
+  const weightPoints = { no: 0, uncertain: 1, yes: 2 }[answers.fluidWeightLoss];
+
+  if (
+    isRecorded(answers.incompleteMealsFromFluid)
+    && mealPoints === undefined
+  ) invalid.push('incompleteMealsFromFluid');
+  if (
+    isRecorded(answers.intakeReducedFifty)
+    && answers.intakeReducedFifty !== 'yes'
+    && answers.intakeReducedFifty !== 'no'
+  ) invalid.push('intakeReducedFifty');
+  if (
+    isRecorded(answers.fluidWeightLoss)
+    && weightPoints === undefined
+  ) invalid.push('fluidWeightLoss');
+  if (missing.length > 0 || invalid.length > 0) return incompleteEvaluation(missing, invalid);
+
+  const fluidPoints = 1;
+  const intakePoints = answers.intakeReducedFifty === 'yes' ? 2 : 0;
+  return completeRfhEvaluation(fluidPoints + mealPoints + intakePoints + weightPoints);
 }
 
 export function createEmptyToolAssessment(toolId) {
