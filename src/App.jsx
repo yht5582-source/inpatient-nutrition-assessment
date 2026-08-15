@@ -14,7 +14,10 @@ import {
   Waves
 } from 'lucide-react';
 import {
+  applyDiagnosisSelection,
+  applyWardSelection,
   calculateBmi,
+  diagnosisOptions,
   getAssessmentStatus,
   getContextValidation,
   getRecommendation,
@@ -25,7 +28,8 @@ import {
   normalizeResult,
   pathwayMeta,
   questions,
-  toolRegistry
+  toolRegistry,
+  wardOptions
 } from './clinicalLogic.js';
 
 const steps = [
@@ -216,13 +220,13 @@ function ContextScreen({ context, setContext, recommendation, contextValidation,
             <Field label="病人姓名" value={context.patientName} onChange={(value) => setContext((current) => ({ ...current, patientName: value }))} />
             <Field label="年齡" value={context.age} type="number" onChange={(value) => updateNumber('age', value)} />
             <Select label="生理性別" value={context.sex} options={['未填', '男', '女', '其他']} onChange={(value) => setContext((current) => ({ ...current, sex: value }))} />
-            <Field label="病房" value={context.ward} onChange={(value) => setContext((current) => ({ ...current, ward: value }))} />
+            <Select label="病房" value={context.ward} options={wardOptions} onChange={(value) => setContext((current) => applyWardSelection(current, value))} />
             <Field label="床號" value={context.bed} onChange={(value) => setContext((current) => ({ ...current, bed: value }))} />
             <Field label="住院日" value={context.admissionDay} type="number" onChange={(value) => updateNumber('admissionDay', value)} />
             <Field label="身高 cm" value={context.height} type="number" onChange={(value) => updateNumber('height', value)} />
             <Field label="目前體重 kg" value={context.weight} type="number" onChange={(value) => updateNumber('weight', value)} />
             <Field label="Dry weight kg" value={context.dryWeight} type="number" onChange={(value) => updateNumber('dryWeight', value)} />
-            <Field label="入院原因 / 診斷" value={context.diagnosis} onChange={(value) => setContext((current) => ({ ...current, diagnosis: value }))} />
+            <Select label="入院原因 / 診斷" value={context.diagnosis} options={['', ...diagnosisOptions]} onChange={(value) => setContext((current) => applyDiagnosisSelection(current, value))} />
           </div>
           <div className="select-row">
             <Select label="飲食狀態" value={context.dietStatus} options={['', '一般飲食', '軟質飲食', 'NPO', '管灌']} onChange={(value) => setContext((current) => ({ ...current, dietStatus: value, npoReason: value === 'NPO' ? current.npoReason : '' }))} />
