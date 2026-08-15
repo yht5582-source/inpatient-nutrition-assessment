@@ -927,6 +927,10 @@ button {
   background: #fff6f5;
 }
 
+.result-card.red .result-value {
+  color: var(--red);
+}
+
 .result-card.amber {
   border-color: #ecd2a8;
   background: #fff9ef;
