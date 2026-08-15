@@ -139,9 +139,27 @@ button {
   color: #fff;
 }
 
+.step-item:disabled,
+.table-row:disabled,
+.choice-button:disabled,
+.primary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.step-item:disabled:hover,
+.table-row:disabled:hover,
+.primary-button:disabled:hover {
+  background: inherit;
+}
+
 .step-item strong,
 .step-item small {
   display: block;
+}
+
+.mobile-step-title {
+  display: none;
 }
 
 .step-item strong {
@@ -965,7 +983,7 @@ button {
   gap: 10px;
 }
 
-.check-grid label {
+.check-grid > div {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -973,6 +991,14 @@ button {
   border: 1px solid var(--line);
   border-radius: 6px;
   background: #fff;
+}
+
+.empty-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  color: var(--muted);
 }
 
 .note-preview {
@@ -998,6 +1024,10 @@ button {
   border: 1px solid var(--line);
   border-radius: 8px;
   backdrop-filter: blur(10px);
+}
+
+.footer-actions .primary-button {
+  margin-top: 0;
 }
 
 @media (max-width: 1100px) {
@@ -1036,7 +1066,7 @@ button {
 
 @media (max-width: 760px) {
   .screen {
-    padding: 14px 12px 120px;
+    padding: 14px 12px 24px;
   }
 
   .topbar {
@@ -1047,7 +1077,40 @@ button {
   }
 
   .step-rail {
-    padding: 16px 12px;
+    padding: 12px;
+  }
+
+  .brand {
+    margin-bottom: 10px;
+  }
+
+  .step-rail nav {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 5px;
+  }
+
+  .step-item {
+    grid-template-columns: 1fr;
+    grid-template-rows: 20px auto;
+    justify-items: center;
+    gap: 4px;
+    min-height: 62px;
+    padding: 8px 4px;
+    text-align: center;
+  }
+
+  .step-number,
+  .desktop-step-title,
+  .step-item small {
+    display: none;
+  }
+
+  .mobile-step-title {
+    display: block;
+  }
+
+  .step-item strong {
+    font-size: 12px;
   }
 
   .step-item strong,

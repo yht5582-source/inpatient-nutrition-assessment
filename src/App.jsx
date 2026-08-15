@@ -1,271 +1,99 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Activity,
   AlertTriangle,
   BadgeCheck,
   ClipboardCheck,
   FileText,
-  HeartPulse,
   Home,
   Info,
-  ListChecks,
-  RefreshCw,
-  Save,
   ShieldAlert,
   Stethoscope,
-  Syringe,
   UserRound,
   Utensils,
   Waves
 } from 'lucide-react';
+import {
+  calculateBmi,
+  getAssessmentStatus,
+  getContextValidation,
+  getRecommendation,
+  getReferenceWeight,
+  getResultTone,
+  getRoute,
+  modifierLabels,
+  normalizeResult,
+  pathwayMeta,
+  questions,
+  toolRegistry
+} from './clinicalLogic.js';
 
 const steps = [
-  { id: 'home', title: '首頁', subtitle: 'Home', icon: Home },
-  { id: 'context', title: '病人背景', subtitle: 'Patient Context', icon: UserRound },
-  { id: 'tool', title: '工具選擇', subtitle: 'Tool Selection', icon: Stethoscope },
-  { id: 'assessment', title: '評估執行', subtitle: 'Assessment', icon: ClipboardCheck },
-  { id: 'result', title: '臨床結果與營養照護組合', subtitle: 'Clinical Result + Nutrition Care Bundle', icon: FileText }
-];
-
-const pathwayMeta = {
-  ICU: { label: 'ICU', tool: 'mNUTRIC', reason: '重症照護路徑', priority: 1 },
-  LIVER: { label: 'cirrhosis', tool: 'RFH-NPT', reason: '肝硬化專屬營養風險', priority: 2 },
-  RENAL: { label: 'CKD5D / HD / PD', tool: '7-point SGA', reason: '腎臟病 / 透析營養狀態評估', priority: 3 },
-  ONCOLOGY: { label: 'active cancer', tool: 'PG-SGA SF', reason: '癌症營養風險與症狀 triage', priority: 4 },
-  GERIATRIC: { label: 'geriatric', tool: 'MNA-SF', reason: '老年住院營養篩檢', priority: 5 },
-  GENERAL: { label: 'general adult', tool: 'NRS-2002', reason: '一般成人住院營養風險篩檢', priority: 6 }
-};
-
-const modifierLabels = {
-  heartFailure: 'heart failure',
-  dysphagia: 'dysphagia',
-  edemaAscites: 'edema / ascites',
-  refeeding: 'refeeding risk',
-  age65: 'age >=65',
-  poorIntake: 'poor intake'
-};
-
-const toolRegistry = {
-  'NRS-2002': { type: 'Nutrition screening', population: 'General adult inpatient', version: 'V1 hospital-approved' },
-  'MNA-SF': { type: 'Geriatric screening', population: 'Age >=65', version: 'License review required' },
-  '7-point SGA': { type: 'Nutrition assessment', population: 'CKD5D / dialysis', version: 'V1 hospital-approved' },
-  'RFH-NPT': { type: 'Liver nutrition risk', population: 'Cirrhosis', version: 'License review required' },
-  'PG-SGA SF': { type: 'Oncology triage', population: 'Active cancer', version: 'License review required' },
-  mNUTRIC: { type: 'ICU nutrition risk', population: 'Critical care', version: 'V1 hospital-approved' }
-};
-
-const questions = [
-  {
-    id: 'intake',
-    label: '目前攝取量約為估計需求的多少？',
-    type: 'choice',
-    options: ['>=75%', '50-74%', '25-49%', '<25% 或幾乎無攝取']
-  },
-  {
-    id: 'weightLoss',
-    label: '近期是否有非預期體重下降？',
-    type: 'choice',
-    options: ['否', '不確定', '是，輕度', '是，明顯']
-  },
-  {
-    id: 'muscleLoss',
-    label: '臨床觀察是否有肌肉流失？',
-    type: 'choice',
-    options: ['無', '輕度', '中度', '嚴重']
-  },
-  {
-    id: 'gi',
-    label: '目前 GI tract 是否可使用？',
-    type: 'choice',
-    options: ['functional', 'partially functional', 'uncertain', 'unavailable']
-  },
-  {
-    id: 'swallow',
-    label: 'Oral feeding safety',
-    type: 'choice',
-    options: ['safe', 'suspected dysphagia', 'unsafe', 'not assessed']
-  }
+  { id: 'home', title: '首頁', mobileTitle: '首頁', subtitle: 'Home', icon: Home },
+  { id: 'context', title: '病人背景', mobileTitle: '背景', subtitle: 'Patient Context', icon: UserRound },
+  { id: 'tool', title: '工具選擇', mobileTitle: '工具', subtitle: 'Tool Selection', icon: Stethoscope },
+  { id: 'assessment', title: '評估執行', mobileTitle: '評估', subtitle: 'Assessment', icon: ClipboardCheck },
+  { id: 'result', title: '臨床結果與營養照護組合', mobileTitle: '結果', subtitle: 'Clinical Result + Nutrition Care Bundle', icon: FileText }
 ];
 
 const initialContext = {
   role: '營養師',
-  patientName: '王大明',
-  age: 76,
-  sex: '男',
+  patientName: '',
+  age: '',
+  sex: '未填',
   ward: '一般病房',
-  bed: '12A-03',
-  admissionDay: 5,
-  height: 168,
-  weight: 67.2,
-  dryWeight: 63.5,
-  diagnosis: '肺炎合併食慾下降',
-  intake: '25-49%',
-  giFunction: 'functional',
-  oralSafety: 'not assessed',
+  bed: '',
+  admissionDay: '',
+  height: '',
+  weight: '',
+  dryWeight: '',
+  diagnosis: '',
+  dietStatus: '',
+  npoReason: '',
+  intake: '',
+  giFunction: '',
+  oralSafety: '',
+  renalModality: 'not assessed',
   pathways: {
     ICU: false,
     LIVER: false,
-    RENAL: true,
+    RENAL: false,
     ONCOLOGY: false,
-    GERIATRIC: true,
+    GERIATRIC: false,
     GENERAL: false
   },
   modifiers: {
-    heartFailure: true,
-    dysphagia: true,
-    edemaAscites: true,
-    refeeding: true,
-    poorIntake: true
+    heartFailure: false,
+    dysphagia: false,
+    edemaAscites: false,
+    refeeding: false,
+    poorIntake: false
   }
 };
+
+function createInitialContext() {
+  return {
+    ...initialContext,
+    pathways: { ...initialContext.pathways },
+    modifiers: { ...initialContext.modifiers }
+  };
+}
+
+function createInitialAnswers() {
+  return {
+    intake: '',
+    weightLoss: '',
+    muscleLoss: '',
+    gi: '',
+    swallow: ''
+  };
+}
 
 function cx(...classes) {
   return classes.filter(Boolean).join(' ');
 }
 
-function getPathway(context) {
-  const selected = Object.entries(context.pathways)
-    .filter(([, value]) => value)
-    .map(([key]) => key);
-
-  if (context.age >= 65 && !selected.includes('GERIATRIC')) selected.push('GERIATRIC');
-  if (!selected.length) selected.push('GENERAL');
-
-  return selected.sort((a, b) => pathwayMeta[a].priority - pathwayMeta[b].priority)[0];
-}
-
-function getRecommendation(context) {
-  const primary = getPathway(context);
-  const meta = pathwayMeta[primary];
-  const modifiers = [];
-  if (context.age >= 65) modifiers.push('age65');
-  Object.entries(context.modifiers).forEach(([key, value]) => {
-    if (value) modifiers.push(key);
-  });
-
-  const alternatives = Object.entries(pathwayMeta)
-    .filter(([key]) => key !== primary)
-    .slice(0, 4)
-    .map(([key, value]) => ({
-      tool: value.tool,
-      use: value.reason,
-      judgment: key === 'GENERAL' ? '後續使用' : '可追加'
-    }));
-
-  return {
-    primary,
-    primaryTool: meta.tool,
-    primaryPathway: meta.label,
-    reasons: [meta.reason, ...modifiers.map((item) => modifierLabels[item]).filter(Boolean)],
-    modifiers,
-    alternatives,
-    nextStep: `開始 ${meta.tool}`
-  };
-}
-
-function normalizeResult(context, answers, recommendation, overrideTool) {
-  const tool = overrideTool || recommendation.primaryTool;
-  const intake = answers.intake || context.intake;
-  const severeSignals = [
-    answers.muscleLoss === '嚴重',
-    answers.weightLoss === '是，明顯',
-    intake === '<25% 或幾乎無攝取',
-    context.modifiers.refeeding
-  ].filter(Boolean).length;
-  const moderateSignals = [
-    answers.muscleLoss === '中度',
-    answers.weightLoss === '是，輕度',
-    intake === '25-49%',
-    context.modifiers.poorIntake
-  ].filter(Boolean).length;
-
-  let nutritionRisk = 'AT_RISK';
-  let malnutrition = 'SUSPECTED';
-  let native = 'At risk';
-
-  if (tool === '7-point SGA') {
-    nutritionRisk = 'NOT_APPLICABLE';
-    malnutrition = severeSignals >= 2 ? 'SEVERE' : moderateSignals >= 2 ? 'MODERATE' : 'NO_MALNUTRITION';
-    native = malnutrition === 'SEVERE' ? 'Severely malnourished' : malnutrition === 'MODERATE' ? 'Mild / moderate malnutrition' : 'Well nourished';
-  } else if (tool === 'mNUTRIC') {
-    nutritionRisk = severeSignals >= 1 ? 'HIGH' : 'LOW';
-    malnutrition = 'NOT_ASSESSED';
-    native = nutritionRisk === 'HIGH' ? 'High nutrition risk' : 'Lower nutrition risk';
-  } else {
-    nutritionRisk = severeSignals >= 1 ? 'HIGH' : moderateSignals >= 1 ? 'AT_RISK' : 'LOW';
-    malnutrition = nutritionRisk === 'HIGH' ? 'SUSPECTED' : 'NOT_ASSESSED';
-    native = nutritionRisk === 'HIGH' ? 'Positive / high concern' : nutritionRisk === 'AT_RISK' ? 'Positive' : 'Negative';
-  }
-
-  const safetyFlags = [];
-  if (context.modifiers.dysphagia || answers.swallow === 'suspected dysphagia' || answers.swallow === 'unsafe') {
-    safetyFlags.push('Swallowing safety pending');
-  }
-  if (context.modifiers.refeeding) safetyFlags.push('Refeeding risk');
-  if (context.modifiers.edemaAscites || context.modifiers.heartFailure) safetyFlags.push('Fluid-affected weight');
-
-  const gray = !answers.gi || answers.gi === 'uncertain' || answers.swallow === 'not assessed';
-  const red = nutritionRisk === 'HIGH' || malnutrition === 'SEVERE' || safetyFlags.includes('Refeeding risk');
-  const amber = nutritionRisk === 'AT_RISK' || malnutrition === 'MODERATE' || safetyFlags.length > 0;
-  const priority = gray && safetyFlags.includes('Swallowing safety pending') ? 'GRAY' : red ? 'RED' : amber ? 'AMBER' : 'GREEN';
-
-  return {
-    tool,
-    native,
-    nutritionRisk,
-    malnutrition,
-    priority,
-    safetyFlags,
-    reasons: [
-      native,
-      intake,
-      ...safetyFlags,
-      ...recommendation.modifiers.map((item) => modifierLabels[item]).filter(Boolean)
-    ]
-  };
-}
-
-function getRoute(context, answers, result) {
-  const oralSafety = answers.swallow || context.oralSafety;
-  const gi = answers.gi || context.giFunction;
-  const intake = answers.intake || context.intake;
-
-  if (oralSafety !== 'safe') {
-    return {
-      level: gi === 'functional' || gi === 'partially functional' ? 'R3' : 'Pending',
-      title: gi === 'unavailable' ? '評估 PN appropriateness' : '先完成吞嚥安全評估，必要時評估 EN appropriateness',
-      status: 'PENDING_ASSESSMENT',
-      why: ['Oral feeding safety 尚未確認', 'Dysphagia flag 會覆蓋一般 oral recommendation']
-    };
-  }
-
-  if (gi === 'unavailable') {
-    return {
-      level: 'R4',
-      title: '評估 PN appropriateness',
-      status: 'CONSIDER',
-      why: ['GI tract unavailable', '無法以 oral / enteral route 滿足需求']
-    };
-  }
-
-  if (intake === '>=75%') {
-    return {
-      level: 'R0',
-      title: '維持 therapeutic oral diet 並追蹤攝取',
-      status: 'RECOMMENDED',
-      why: ['Oral route safe', 'Intake currently adequate']
-    };
-  }
-
-  return {
-    level: result.priority === 'RED' ? 'R2' : 'R1',
-    title: 'Optimize oral nutrition，並 consider ONS',
-    status: 'RECOMMENDED',
-    why: ['Oral route safe', '目前攝取不足', '若持續不足再評估 EN']
-  };
-}
-
-function StepRail({ activeStep, setActiveStep }) {
+function StepRail({ activeStep, setActiveStep, canNavigate }) {
   return (
     <aside className="step-rail">
       <div className="brand">
@@ -281,41 +109,38 @@ function StepRail({ activeStep, setActiveStep }) {
         {steps.map((step, index) => {
           const Icon = step.icon;
           const active = activeStep === step.id;
+          const disabled = canNavigate[step.id] === false;
           return (
-            <button key={step.id} className={cx('step-item', active && 'active')} onClick={() => setActiveStep(step.id)}>
+            <button key={step.id} className={cx('step-item', active && 'active')} onClick={() => setActiveStep(step.id)} disabled={disabled}>
               <span className="step-number">{index + 1}</span>
               <Icon size={19} />
               <span>
-                <strong>{step.title}</strong>
+                <strong><span className="desktop-step-title">{step.title}</span><span className="mobile-step-title">{step.mobileTitle}</span></strong>
                 <small>{step.subtitle}</small>
               </span>
             </button>
           );
         })}
       </nav>
-      <button className="outline-button full">
-        <RefreshCw size={16} />
-        評估歷史紀錄
-      </button>
     </aside>
   );
 }
 
 function TopBar({ context, setContext }) {
-  const bmi = (context.weight / Math.pow(context.height / 100, 2)).toFixed(1);
+  const bmi = calculateBmi(context.weight, context.height);
   return (
     <header className="topbar">
       <div className="patient-strip">
-        <span>病人：{context.patientName}</span>
-        <span>{context.age} 歲</span>
+        <span>病人：{context.patientName || '未填'}</span>
+        <span>{context.age === '' ? '年齡未填' : `${context.age} 歲`}</span>
         <span>{context.sex}</span>
-        <span>床號：{context.bed}</span>
-        <span>住院日：第 {context.admissionDay} 天</span>
-        <span>BMI：{bmi} kg/m²</span>
+        <span>床號：{context.bed || '未填'}</span>
+        <span>住院日：{context.admissionDay === '' ? '未填' : `第 ${context.admissionDay} 天`}</span>
+        <span>BMI：{bmi ?? '—'}{bmi != null ? ' kg/m²' : ''}</span>
       </div>
       <div className="role-switch" aria-label="角色切換">
         {['醫師', '營養師', '護理師'].map((role) => (
-          <button key={role} className={context.role === role ? 'selected' : ''} onClick={() => setContext({ ...context, role })}>
+          <button key={role} className={context.role === role ? 'selected' : ''} onClick={() => setContext((current) => ({ ...current, role }))}>
             {role}
           </button>
         ))}
@@ -324,7 +149,7 @@ function TopBar({ context, setContext }) {
   );
 }
 
-function HomeScreen({ setActiveStep, context, setContext }) {
+function HomeScreen({ setActiveStep, setContext }) {
   return (
     <section className="screen home-screen">
       <div className="home-intro">
@@ -342,7 +167,7 @@ function HomeScreen({ setActiveStep, context, setContext }) {
         <button
           className="entry-panel"
           onClick={() => {
-            setContext({ ...context, role: '護理師' });
+            setContext((current) => ({ ...current, role: '護理師' }));
             setActiveStep('context');
           }}
         >
@@ -353,7 +178,7 @@ function HomeScreen({ setActiveStep, context, setContext }) {
         <button
           className="entry-panel primary"
           onClick={() => {
-            setContext({ ...context, role: '營養師' });
+            setContext((current) => ({ ...current, role: '營養師' }));
             setActiveStep('context');
           }}
         >
@@ -374,35 +199,69 @@ function HomeScreen({ setActiveStep, context, setContext }) {
   );
 }
 
-function ContextScreen({ context, setContext, recommendation, setActiveStep, syncAssessmentField }) {
+function ContextScreen({ context, setContext, recommendation, contextValidation, setActiveStep, syncAssessmentField }) {
   const updatePathway = (key) => {
-    setContext({ ...context, pathways: { ...context.pathways, [key]: !context.pathways[key] } });
+    setContext((current) => ({ ...current, pathways: { ...current.pathways, [key]: !current.pathways[key] } }));
   };
   const updateModifier = (key) => {
-    setContext({ ...context, modifiers: { ...context.modifiers, [key]: !context.modifiers[key] } });
+    setContext((current) => ({ ...current, modifiers: { ...current.modifiers, [key]: !current.modifiers[key] } }));
   };
+  const updateNumber = (key, value) => setContext((current) => ({ ...current, [key]: value === '' ? '' : Number(value) }));
 
   return (
     <section className="screen grid-screen">
       <main className="main-stack">
         <Panel title="Patient Context 病人背景資訊" action="V1.0.0">
           <div className="form-grid">
-            <Field label="病人姓名" value={context.patientName} onChange={(value) => setContext({ ...context, patientName: value })} />
-            <Field label="年齡" value={context.age} type="number" onChange={(value) => setContext({ ...context, age: Number(value) })} />
-            <Field label="身高 cm" value={context.height} type="number" onChange={(value) => setContext({ ...context, height: Number(value) })} />
-            <Field label="目前體重 kg" value={context.weight} type="number" onChange={(value) => setContext({ ...context, weight: Number(value) })} />
-            <Field label="Dry weight kg" value={context.dryWeight} type="number" onChange={(value) => setContext({ ...context, dryWeight: Number(value) })} />
-            <Field label="入院原因 / 診斷" value={context.diagnosis} onChange={(value) => setContext({ ...context, diagnosis: value })} />
+            <Field label="病人姓名" value={context.patientName} onChange={(value) => setContext((current) => ({ ...current, patientName: value }))} />
+            <Field label="年齡" value={context.age} type="number" onChange={(value) => updateNumber('age', value)} />
+            <Select label="生理性別" value={context.sex} options={['未填', '男', '女', '其他']} onChange={(value) => setContext((current) => ({ ...current, sex: value }))} />
+            <Field label="病房" value={context.ward} onChange={(value) => setContext((current) => ({ ...current, ward: value }))} />
+            <Field label="床號" value={context.bed} onChange={(value) => setContext((current) => ({ ...current, bed: value }))} />
+            <Field label="住院日" value={context.admissionDay} type="number" onChange={(value) => updateNumber('admissionDay', value)} />
+            <Field label="身高 cm" value={context.height} type="number" onChange={(value) => updateNumber('height', value)} />
+            <Field label="目前體重 kg" value={context.weight} type="number" onChange={(value) => updateNumber('weight', value)} />
+            <Field label="Dry weight kg" value={context.dryWeight} type="number" onChange={(value) => updateNumber('dryWeight', value)} />
+            <Field label="入院原因 / 診斷" value={context.diagnosis} onChange={(value) => setContext((current) => ({ ...current, diagnosis: value }))} />
           </div>
           <div className="select-row">
-            <Select label="飲食狀態" value="軟質飲食" options={['一般飲食', '軟質飲食', 'NPO', '管灌']} />
-            <Select label="進食情形" value={context.intake} options={['>=75%', '50-74%', '25-49%', '<25% 或幾乎無攝取']} onChange={(value) => syncAssessmentField('intake', value)} />
-            <Select label="GI tract" value={context.giFunction} options={['functional', 'partially functional', 'uncertain', 'unavailable']} onChange={(value) => syncAssessmentField('gi', value)} />
-            <Select label="Oral safety" value={context.oralSafety} options={['safe', 'suspected dysphagia', 'unsafe', 'not assessed']} onChange={(value) => syncAssessmentField('swallow', value)} />
+            <Select label="飲食狀態" value={context.dietStatus} options={['', '一般飲食', '軟質飲食', 'NPO', '管灌']} onChange={(value) => setContext((current) => ({ ...current, dietStatus: value, npoReason: value === 'NPO' ? current.npoReason : '' }))} />
+            <Select label="進食情形" value={context.intake} options={['', ...questions.find((question) => question.id === 'intake').options]} onChange={(value) => syncAssessmentField('intake', value)} />
+            <Select label="GI tract" value={context.giFunction} options={['', 'functional', 'partially functional', 'uncertain', 'unavailable']} onChange={(value) => syncAssessmentField('gi', value)} />
+            <Select label="Oral safety" value={context.oralSafety} options={['', 'safe', 'suspected dysphagia', 'unsafe', 'not assessed']} onChange={(value) => syncAssessmentField('swallow', value)} />
           </div>
+          {context.dietStatus === 'NPO' && (
+            <div className="select-row pathway-details">
+              <Select label="NPO 原因" value={context.npoReason} options={['', '醫療處置 / 手術', '吞嚥 / 吸入風險', 'GI contraindication', '其他 / 尚待確認']} onChange={(value) => setContext((current) => ({ ...current, npoReason: value }))} />
+            </div>
+          )}
         </Panel>
 
+        {(contextValidation.blockers.length > 0 || contextValidation.warnings.length > 0) && (
+          <Panel title="資料檢核">
+            <div className="alert-list">
+              {contextValidation.blockers.map((message) => (
+                <div key={message} className="safety-alert red">
+                  <AlertTriangle size={18} />
+                  <div><strong>無法進入成人評估流程</strong><span>{message}</span></div>
+                </div>
+              ))}
+              {contextValidation.warnings.map((message) => (
+                <div key={message} className="safety-alert amber">
+                  <Info size={18} />
+                  <div><strong>資料可靠度提醒</strong><span>{message}</span></div>
+                </div>
+              ))}
+            </div>
+          </Panel>
+        )}
+
         <Panel title="臨床路徑與特殊因子">
+          {context.pathways.RENAL && (
+            <div className="select-row pathway-details">
+              <Select label="腎臟治療型態" value={context.renalModality} options={['not assessed', 'CKD5D non-dialysis', 'HD', 'PD']} onChange={(value) => setContext((current) => ({ ...current, renalModality: value }))} />
+            </div>
+          )}
           <div className="toggle-grid">
             {Object.entries(pathwayMeta).map(([key, meta]) => (
               <Toggle key={key} active={context.pathways[key]} onClick={() => updatePathway(key)} label={meta.label} />
@@ -419,18 +278,18 @@ function ContextScreen({ context, setContext, recommendation, setActiveStep, syn
           <div className="recommendation-row">
             <div>
               <small>主要評估工具</small>
-              <strong>{recommendation.primaryTool}</strong>
-              <span>{recommendation.primaryPathway}</span>
+              <strong>{recommendation?.primaryTool || '—'}</strong>
+              <span>{recommendation?.primaryPathway || '請先完成成人適用性資料'}</span>
             </div>
             <div className="arrow-line" />
             <div>
               <small>下一步</small>
-              <strong>{recommendation.nextStep}</strong>
+              <strong>{recommendation?.nextStep || '暫停分流'}</strong>
               <span>可於下一頁 professional override</span>
             </div>
           </div>
           <div className="reason-list">
-            {recommendation.reasons.slice(0, 5).map((reason) => (
+            {(recommendation?.reasons || []).slice(0, 5).map((reason) => (
               <span key={reason}>
                 <BadgeCheck size={14} />
                 {reason}
@@ -440,13 +299,24 @@ function ContextScreen({ context, setContext, recommendation, setActiveStep, syn
         </Panel>
       </main>
       <SafetyPanel context={context} recommendation={recommendation} />
-      <FooterActions back="回首頁" next="前往工具選擇" onBack={() => setActiveStep('home')} onNext={() => setActiveStep('tool')} />
+      <FooterActions back="回首頁" next="前往工具選擇" onBack={() => setActiveStep('home')} onNext={() => setActiveStep('tool')} nextDisabled={!contextValidation.isValid} />
     </section>
   );
 }
 
-function ToolScreen({ recommendation, overrideTool, setOverrideTool, setActiveStep }) {
-  const registry = toolRegistry[overrideTool || recommendation.primaryTool];
+function ToolScreen({ recommendation, overrideTool, setOverrideTool, overrideReason, setOverrideReason, setActiveStep }) {
+  const selectedTool = overrideTool || recommendation.primaryTool;
+  const registry = toolRegistry[selectedTool];
+  const canStart = registry.licenseStatus === 'APPROVED' && (!overrideTool || overrideReason.trim().length > 0);
+  const selectTool = (tool) => {
+    if (tool === recommendation.primaryTool) {
+      setOverrideTool('');
+      setOverrideReason('');
+      return;
+    }
+    setOverrideTool(tool);
+    setOverrideReason('');
+  };
   return (
     <section className="screen grid-screen">
       <main className="main-stack">
@@ -454,10 +324,10 @@ function ToolScreen({ recommendation, overrideTool, setOverrideTool, setActiveSt
           <div className="primary-rec">
             <div>
               <span className="eyeless">首選評估</span>
-              <h2>{overrideTool || recommendation.primaryTool}</h2>
+              <h2>{selectedTool}</h2>
               <p>{registry.population} · {registry.type}</p>
             </div>
-            <StatusChip tone="blue">{recommendation.primaryPathway}</StatusChip>
+            <StatusChip tone={registry.licenseStatus === 'APPROVED' ? 'blue' : 'amber'}>{registry.licenseStatus}</StatusChip>
           </div>
           <div className="why-box">
             <strong>為什麼推薦？</strong>
@@ -468,8 +338,8 @@ function ToolScreen({ recommendation, overrideTool, setOverrideTool, setActiveSt
               </span>
             ))}
           </div>
-          <button className="primary-button" onClick={() => setActiveStep('assessment')}>
-            開始 {overrideTool || recommendation.primaryTool}
+          <button className="primary-button" onClick={() => setActiveStep('assessment')} disabled={!canStart}>
+            {registry.licenseStatus === 'APPROVED' ? '蒐集共同評估資料' : '工具待授權審查'}
           </button>
         </Panel>
 
@@ -481,7 +351,7 @@ function ToolScreen({ recommendation, overrideTool, setOverrideTool, setActiveSt
               <span>系統判斷</span>
             </div>
             {recommendation.alternatives.map((tool) => (
-              <button key={tool.tool} className="table-row" onClick={() => setOverrideTool(tool.tool)}>
+              <button key={tool.tool} className="table-row" onClick={() => selectTool(tool.tool)} disabled={toolRegistry[tool.tool].licenseStatus !== 'APPROVED'}>
                 <strong>{tool.tool}</strong>
                 <span>{tool.use}</span>
                 <StatusChip>{tool.judgment}</StatusChip>
@@ -493,15 +363,17 @@ function ToolScreen({ recommendation, overrideTool, setOverrideTool, setActiveSt
         <Panel title="Professional Override">
           <div className="override-grid">
             {Object.keys(toolRegistry).map((tool) => (
-              <button key={tool} className={cx('choice-button', (overrideTool || recommendation.primaryTool) === tool && 'active')} onClick={() => setOverrideTool(tool)}>
+              <button key={tool} className={cx('choice-button', selectedTool === tool && 'active')} onClick={() => selectTool(tool)} disabled={toolRegistry[tool].licenseStatus !== 'APPROVED' && tool !== recommendation.primaryTool}>
                 {tool}
               </button>
             ))}
           </div>
-          <label className="text-area">
-            <span>變更原因</span>
-            <textarea defaultValue={overrideTool ? 'Clinical judgment / institutional protocol' : ''} placeholder="若改用其他工具，請輸入原因..." />
-          </label>
+          {overrideTool && (
+            <label className="text-area">
+              <span>變更原因（必填）</span>
+              <textarea value={overrideReason} onChange={(event) => setOverrideReason(event.target.value)} placeholder="請記錄 clinical judgment / institutional protocol..." />
+            </label>
+          )}
         </Panel>
       </main>
       <aside className="side-panel">
@@ -509,29 +381,34 @@ function ToolScreen({ recommendation, overrideTool, setOverrideTool, setActiveSt
           <Meta label="Type" value={registry.type} />
           <Meta label="Target population" value={registry.population} />
           <Meta label="Version" value={registry.version} />
-          <Meta label="Override" value="Allowed with audit trail" />
+          <Meta label="License status" value={registry.licenseStatus} />
+          <Meta label="Override" value={overrideTool ? (overrideReason.trim() ? 'Reason recorded in this assessment' : 'Reason required') : 'System recommendation'} />
         </Panel>
       </aside>
-      <FooterActions back="回病人背景" next="開始評估" onBack={() => setActiveStep('context')} onNext={() => setActiveStep('assessment')} />
+      <FooterActions back="回病人背景" next="蒐集共同評估資料" onBack={() => setActiveStep('context')} onNext={() => setActiveStep('assessment')} nextDisabled={!canStart} />
     </section>
   );
 }
 
 function AssessmentScreen({ context, recommendation, overrideTool, answers, setAnswers, setActiveStep, syncAssessmentField }) {
+  const assessmentStatus = getAssessmentStatus(answers);
+  const bmi = calculateBmi(context.weight, context.height);
+  const referenceWeight = getReferenceWeight(context);
+  const fluidAffected = context.modifiers.edemaAscites || context.modifiers.heartFailure;
   const updateAnswer = (questionId, value) => {
     if (['intake', 'gi', 'swallow'].includes(questionId)) {
       syncAssessmentField(questionId, value);
       return;
     }
 
-    setAnswers({ ...answers, [questionId]: value });
+    setAnswers((current) => ({ ...current, [questionId]: value }));
   };
 
   return (
     <section className="screen grid-screen">
       <main className="main-stack">
-        <Panel title={`${overrideTool || recommendation.primaryTool} 互動評估`} action="62%">
-          <div className="progress"><span style={{ width: '62%' }} /></div>
+        <Panel title="共同臨床評估資料" action={`${assessmentStatus.percent}%`}>
+          <div className="progress"><span style={{ width: `${assessmentStatus.percent}%` }} /></div>
           <div className="question-stack">
             {questions.map((question) => (
               <div className="question" key={question.id}>
@@ -553,45 +430,49 @@ function AssessmentScreen({ context, recommendation, overrideTool, answers, setA
         </Panel>
         <Panel title="Computed values">
           <div className="metric-grid">
-            <Metric label="BMI" value={(context.weight / Math.pow(context.height / 100, 2)).toFixed(1)} />
-            <Metric label="Reference weight" value={`${context.dryWeight} kg`} note="Dry weight" />
-            <Metric label="Weight reliability" value={context.modifiers.edemaAscites ? 'Fluid affected' : 'Reliable'} />
+            <Metric label="BMI" value={bmi ?? '—'} />
+            <Metric label="Reference weight" value={referenceWeight.value == null ? '—' : `${referenceWeight.value} kg`} note={referenceWeight.type} />
+            <Metric label="Weight reliability" value={fluidAffected ? 'Fluid affected' : 'Reliable'} />
+            <Metric label="Selected tool" value={overrideTool || recommendation.primaryTool} note="Native scoring pending" />
             <Metric label="Entry route" value={context.role === '護理師' ? 'NURSING_SCREEN' : 'PROFESSIONAL_ASSESSMENT'} />
           </div>
         </Panel>
       </main>
       <SafetyPanel context={context} recommendation={recommendation} answers={answers} />
-      <FooterActions back="回工具選擇" next="查看臨床結果" onBack={() => setActiveStep('tool')} onNext={() => setActiveStep('result')} />
+      <FooterActions back="回工具選擇" next="查看臨床結果" onBack={() => setActiveStep('tool')} onNext={() => setActiveStep('result')} nextDisabled={!assessmentStatus.isComplete} />
     </section>
   );
 }
 
-function ResultScreen({ context, recommendation, overrideTool, answers, setActiveStep }) {
+function ResultScreen({ context, recommendation, overrideTool, overrideReason, answers, setActiveStep, onFinish }) {
   const result = normalizeResult(context, answers, recommendation, overrideTool);
   const route = getRoute(context, answers, result);
+  const referenceWeight = getReferenceWeight(context);
   return (
     <section className="screen result-screen">
       <Panel title="Clinical Summary">
         <div className="summary-line">
-          <span>{context.age} 歲 {context.sex}性</span>
+          <span>{context.age} 歲 {context.sex === '未填' ? '性別未填' : `${context.sex}性`}</span>
           <span>{context.ward}</span>
           <span>Primary pathway: {recommendation.primaryPathway}</span>
           <span>Assessment: {result.tool}</span>
-          <span>Completed: 2026-08-13</span>
+          <span>Status: {result.assessmentStatus}</span>
+          {overrideTool && <span>Override reason: {overrideReason}</span>}
         </div>
       </Panel>
 
       <div className="result-grid">
-        <ResultCard label="Nutrition Risk" value={result.nutritionRisk} tone={result.nutritionRisk === 'HIGH' ? 'red' : result.nutritionRisk === 'AT_RISK' ? 'amber' : 'green'} />
-        <ResultCard label="Malnutrition" value={result.malnutrition} tone={result.malnutrition === 'SEVERE' ? 'red' : result.malnutrition === 'MODERATE' ? 'amber' : 'green'} />
-        <ResultCard label="Action Priority" value={result.priority} tone={result.priority === 'RED' ? 'red' : result.priority === 'AMBER' ? 'amber' : result.priority === 'GRAY' ? 'gray' : 'green'} />
+        <ResultCard label="Nutrition Risk" value={result.nutritionRisk} tone={getResultTone('risk', result.nutritionRisk)} />
+        <ResultCard label="Malnutrition" value={result.malnutrition} tone={getResultTone('malnutrition', result.malnutrition)} />
+        <ResultCard label="Action Priority" value={result.priority} tone={getResultTone('priority', result.priority)} />
       </div>
 
       <div className="wide-grid">
         <Panel title="Native Result">
           <Meta label={result.tool} value={result.native} />
           <Meta label="Assessment domain" value={toolRegistry[result.tool].type} />
-          <Meta label="Normalization" value="Native result preserved; mapped separately" />
+          <Meta label="Result status" value={result.assessmentStatus} />
+          <Meta label="Normalization" value="Validated native scoring has not been completed" />
         </Panel>
         <Panel title="Why this result?">
           <div className="reason-list vertical">
@@ -607,24 +488,41 @@ function ResultScreen({ context, recommendation, overrideTool, answers, setActiv
 
       <Panel title="Safety Alerts">
         <div className="alert-list">
+          {result.safetyFlags.length === 0 && (
+            <div className="empty-state"><BadgeCheck size={18} /><span>No active safety alerts</span></div>
+          )}
           {result.safetyFlags.map((flag) => (
             <div key={flag} className="alert-row">
               <ShieldAlert size={18} />
               <div>
                 <strong>{flag}</strong>
-                <span>{flag === 'Refeeding risk' ? '營養供應增加前需完成 electrolyte / thiamine / advancement plan。' : '此條件會影響 feeding route 或資料可靠度。'}</span>
+                <span>{flag === 'Refeeding risk' ? '營養供應增加前需完成 electrolyte / thiamine / advancement plan。' : '此條件會影響 feeding route，需先完成安全確認。'}</span>
               </div>
-              <StatusChip tone={flag === 'Refeeding risk' ? 'red' : 'amber'}>PENDING</StatusChip>
+              <StatusChip tone={flag === 'Refeeding risk' || flag === 'Oral feeding unsafe' ? 'red' : 'amber'}>{flag === 'Oral feeding unsafe' ? 'BLOCKING' : 'PENDING'}</StatusChip>
             </div>
           ))}
         </div>
       </Panel>
 
+      {result.dataQualityFlags.length > 0 && (
+        <Panel title="Data Quality Alerts">
+          <div className="alert-list">
+            {result.dataQualityFlags.map((flag) => (
+              <div key={flag} className="alert-row">
+                <Info size={18} />
+                <div><strong>{flag}</strong><span>此項目影響資料可靠度或後續路徑判斷。</span></div>
+                <StatusChip tone="gray">REVIEW</StatusChip>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      )}
+
       <Panel title="Nutrition Care Bundle">
         <div className="bundle-grid">
-          <BundleItem icon={Stethoscope} title="Professional review" status={result.priority === 'RED' ? 'RECOMMENDED' : 'CONSIDER'} text="由營養師完成個別化 Nutrition Care Plan。" />
+          <BundleItem icon={Stethoscope} title="Professional review" status={result.priority === 'GREEN' ? 'CONSIDER' : 'RECOMMENDED'} text="由營養師完成個別化 Nutrition Care Plan。" />
           <BundleItem icon={Utensils} title="Feeding route" status={route.status} text={route.title} />
-          <BundleItem icon={Activity} title="Requirement profile" status="RECOMMENDED" text={`Reference weight: ${context.dryWeight} kg dry weight; renal / modifier rule set required.`} />
+          <BundleItem icon={Activity} title="Requirement profile" status="RECOMMENDED" text={`Reference weight: ${referenceWeight.value ?? 'unavailable'} kg (${referenceWeight.type}); renal / modifier rule set required.`} />
           <BundleItem icon={Waves} title="Fluid / electrolytes" status="CONSIDER" text="HF / renal / edema 情境需與治療團隊協調 fluid、Na、K、P。" />
         </div>
       </Panel>
@@ -632,10 +530,10 @@ function ResultScreen({ context, recommendation, overrideTool, answers, setActiv
       <Panel title="Monitoring & Reassessment">
         <div className="check-grid">
           {['Oral intake %', 'Weight / dry weight', 'Fluid balance', 'Electrolytes', 'GI tolerance', 'Swallow status', 'Nutrition intervention delivery', '48-72h or pathway-based reassessment'].map((item) => (
-            <label key={item}>
-              <input type="checkbox" defaultChecked />
+            <div key={item}>
+              <BadgeCheck size={16} />
               {item}
-            </label>
+            </div>
           ))}
         </div>
       </Panel>
@@ -648,12 +546,14 @@ Native result: ${result.native}
 Nutrition risk: ${result.nutritionRisk}
 Malnutrition status: ${result.malnutrition}
 Clinical priority: ${result.priority}
+Assessment status: ${result.assessmentStatus}
 Relevant modifiers: ${recommendation.modifiers.map((item) => modifierLabels[item]).filter(Boolean).join(', ')}
+${overrideTool ? `Professional override: ${overrideTool}; reason: ${overrideReason}\n` : ''}Data quality: ${result.dataQualityFlags.join(', ') || 'No active data-quality flags'}
 Nutrition care: ${route.title}
 Safety: ${result.safetyFlags.join(', ') || 'No active safety flags'}`}</pre>
       </Panel>
 
-      <FooterActions back="回評估" next="儲存評估" onBack={() => setActiveStep('assessment')} onNext={() => setActiveStep('home')} />
+      <FooterActions back="回評估" next="完成並建立新評估" onBack={() => setActiveStep('assessment')} onNext={onFinish} />
     </section>
   );
 }
@@ -661,17 +561,23 @@ Safety: ${result.safetyFlags.join(', ') || 'No active safety flags'}`}</pre>
 function SafetyPanel({ context, recommendation, answers = {} }) {
   const swallow = answers.swallow || context.oralSafety;
   const gi = answers.gi || context.giFunction;
+  const referenceWeight = getReferenceWeight(context);
   const alerts = [
     context.modifiers.refeeding && { tone: 'red', icon: AlertTriangle, title: 'High refeeding risk', text: '需完成院內 refeeding safety workflow' },
-    (context.modifiers.dysphagia || swallow !== 'safe') && { tone: 'amber', icon: ShieldAlert, title: 'Swallowing safety pending', text: 'Oral feeding recommendation remains conditional' },
-    context.modifiers.edemaAscites && { tone: 'blue', icon: Waves, title: 'Fluid-affected weight', text: `使用 dry weight ${context.dryWeight} kg 作為參考` },
-    gi === 'uncertain' && { tone: 'gray', icon: Info, title: 'GI tract uncertain', text: 'EN escalation pending assessment' }
+    swallow === 'unsafe' && { tone: 'red', icon: ShieldAlert, title: 'Oral feeding unsafe', text: '不可直接建議 regular oral feeding' },
+    swallow !== 'safe' && swallow !== 'unsafe' && { tone: 'amber', icon: ShieldAlert, title: 'Swallowing safety pending', text: 'Oral feeding recommendation remains conditional' },
+    context.modifiers.dysphagia && swallow === 'safe' && { tone: 'gray', icon: Info, title: 'Swallowing data conflict', text: '請確認 dysphagia modifier 與 oral safety 狀態' },
+    (context.modifiers.edemaAscites || context.modifiers.heartFailure) && { tone: 'blue', icon: Waves, title: 'Fluid-affected weight', text: `Reference weight: ${referenceWeight.value ?? 'unavailable'} kg (${referenceWeight.type})` },
+    (!gi || gi === 'uncertain') && { tone: 'gray', icon: Info, title: 'GI tract uncertain', text: 'EN escalation pending assessment' }
   ].filter(Boolean);
 
   return (
     <aside className="side-panel">
       <Panel title="Safety Gate 安全閘門" action={`需關注 ${alerts.length}`}>
         <div className="alert-list">
+          {alerts.length === 0 && (
+            <div className="empty-state"><BadgeCheck size={18} /><span>No active safety alerts</span></div>
+          )}
           {alerts.map((alert) => {
             const Icon = alert.icon;
             return (
@@ -688,7 +594,8 @@ function SafetyPanel({ context, recommendation, answers = {} }) {
       </Panel>
       <Panel title="臨床修飾因子">
         <div className="modifier-list">
-          {recommendation.modifiers.map((item) => (
+          {(recommendation?.modifiers || []).length === 0 && <div className="empty-state"><BadgeCheck size={16} /><span>No active modifiers</span></div>}
+          {(recommendation?.modifiers || []).map((item) => (
             <div key={item}>
               <span>{modifierLabels[item]}</span>
               <StatusChip tone={item === 'refeeding' ? 'red' : item === 'dysphagia' ? 'amber' : 'green'}>{item === 'refeeding' ? '高' : '有'}</StatusChip>
@@ -727,7 +634,7 @@ function Select({ label, value, options, onChange }) {
       <span>{label}</span>
       <select value={value} onChange={(event) => onChange?.(event.target.value)}>
         {options.map((option) => (
-          <option key={option}>{option}</option>
+          <option key={option} value={option}>{option === '' ? '請選擇' : option}</option>
         ))}
       </select>
     </label>
@@ -777,13 +684,14 @@ function ResultCard({ label, value, tone }) {
 }
 
 function BundleItem({ icon: Icon, title, status, text }) {
+  const tone = status.includes('PENDING') || status === 'CONDITIONAL' ? 'amber' : status === 'RECOMMENDED' ? 'green' : 'default';
   return (
     <div className="bundle-item">
       <Icon size={18} />
       <div>
         <div className="bundle-title">
           <strong>{title}</strong>
-          <StatusChip tone={status.includes('PENDING') ? 'amber' : status === 'RECOMMENDED' ? 'green' : 'default'}>{status}</StatusChip>
+          <StatusChip tone={tone}>{status}</StatusChip>
         </div>
         <span>{text}</span>
       </div>
@@ -791,17 +699,13 @@ function BundleItem({ icon: Icon, title, status, text }) {
   );
 }
 
-function FooterActions({ back, next, onBack, onNext }) {
+function FooterActions({ back, next, onBack, onNext, nextDisabled = false }) {
   return (
     <footer className="footer-actions">
       <button className="outline-button" onClick={onBack}>
         {back}
       </button>
-      <button className="outline-button">
-        <Save size={16} />
-        儲存草稿
-      </button>
-      <button className="primary-button" onClick={onNext}>
+      <button className="primary-button" onClick={onNext} disabled={nextDisabled}>
         {next}
       </button>
     </footer>
@@ -809,18 +713,48 @@ function FooterActions({ back, next, onBack, onNext }) {
 }
 
 export default function App() {
-  const initialStep = new URLSearchParams(window.location.search).get('screen');
-  const [activeStep, setActiveStep] = useState(steps.some((step) => step.id === initialStep) ? initialStep : 'home');
-  const [context, setContext] = useState(initialContext);
+  const requestedStep = new URLSearchParams(window.location.search).get('screen');
+  const initialStep = steps.some((step) => step.id === requestedStep) ? requestedStep : 'home';
+  const [activeStep, setActiveStep] = useState(['home', 'context'].includes(initialStep) ? initialStep : 'context');
+  const [context, setContext] = useState(createInitialContext);
   const [overrideTool, setOverrideTool] = useState('');
-  const [answers, setAnswers] = useState({
-    intake: initialContext.intake,
-    weightLoss: '是，明顯',
-    muscleLoss: '中度',
-    gi: initialContext.giFunction,
-    swallow: initialContext.oralSafety
-  });
+  const [overrideReason, setOverrideReason] = useState('');
+  const [answers, setAnswers] = useState(createInitialAnswers);
   const recommendation = useMemo(() => getRecommendation(context), [context]);
+  const contextValidation = useMemo(() => getContextValidation(context), [context]);
+  const assessmentStatus = useMemo(() => getAssessmentStatus(answers), [answers]);
+  const selectedTool = overrideTool || recommendation?.primaryTool;
+  const selectedRegistry = selectedTool ? toolRegistry[selectedTool] : null;
+  const canStartAssessment = contextValidation.isValid
+    && selectedRegistry?.licenseStatus === 'APPROVED'
+    && (!overrideTool || overrideReason.trim().length > 0);
+  const canNavigate = {
+    home: true,
+    context: true,
+    tool: contextValidation.isValid,
+    assessment: canStartAssessment,
+    result: canStartAssessment && assessmentStatus.isComplete
+  };
+
+  useEffect(() => {
+    setOverrideTool('');
+    setOverrideReason('');
+  }, [recommendation?.primaryTool]);
+
+  const navigateTo = (step) => {
+    if (step === 'tool' && !contextValidation.isValid) return setActiveStep('context');
+    if ((step === 'assessment' || step === 'result') && !canStartAssessment) return setActiveStep('tool');
+    if (step === 'result' && !assessmentStatus.isComplete) return setActiveStep('assessment');
+    setActiveStep(step);
+  };
+
+  const finishAssessment = () => {
+    setContext(createInitialContext());
+    setAnswers(createInitialAnswers());
+    setOverrideTool('');
+    setOverrideReason('');
+    setActiveStep('home');
+  };
 
   const syncAssessmentField = (field, value) => {
     const contextKey = {
@@ -829,18 +763,19 @@ export default function App() {
       swallow: 'oralSafety'
     }[field];
 
+    if (!contextKey) return;
     setContext((currentContext) => ({ ...currentContext, [contextKey]: value }));
     setAnswers((currentAnswers) => ({ ...currentAnswers, [field]: value }));
   };
 
   return (
     <div className="app-shell">
-      <StepRail activeStep={activeStep} setActiveStep={setActiveStep} />
+      <StepRail activeStep={activeStep} setActiveStep={navigateTo} canNavigate={canNavigate} />
       <div className="workspace">
         <TopBar context={context} setContext={setContext} />
-        {activeStep === 'home' && <HomeScreen setActiveStep={setActiveStep} context={context} setContext={setContext} />}
-        {activeStep === 'context' && <ContextScreen context={context} setContext={setContext} recommendation={recommendation} setActiveStep={setActiveStep} syncAssessmentField={syncAssessmentField} />}
-        {activeStep === 'tool' && <ToolScreen recommendation={recommendation} overrideTool={overrideTool} setOverrideTool={setOverrideTool} setActiveStep={setActiveStep} />}
+        {activeStep === 'home' && <HomeScreen setActiveStep={navigateTo} setContext={setContext} />}
+        {activeStep === 'context' && <ContextScreen context={context} setContext={setContext} recommendation={recommendation} contextValidation={contextValidation} setActiveStep={navigateTo} syncAssessmentField={syncAssessmentField} />}
+        {activeStep === 'tool' && recommendation && <ToolScreen recommendation={recommendation} overrideTool={overrideTool} setOverrideTool={setOverrideTool} overrideReason={overrideReason} setOverrideReason={setOverrideReason} setActiveStep={navigateTo} />}
         {activeStep === 'assessment' && (
           <AssessmentScreen
             context={context}
@@ -848,11 +783,11 @@ export default function App() {
             overrideTool={overrideTool}
             answers={answers}
             setAnswers={setAnswers}
-            setActiveStep={setActiveStep}
+            setActiveStep={navigateTo}
             syncAssessmentField={syncAssessmentField}
           />
         )}
-        {activeStep === 'result' && <ResultScreen context={context} recommendation={recommendation} overrideTool={overrideTool} answers={answers} setActiveStep={setActiveStep} />}
+        {activeStep === 'result' && recommendation && <ResultScreen context={context} recommendation={recommendation} overrideTool={overrideTool} overrideReason={overrideReason} answers={answers} setActiveStep={navigateTo} onFinish={finishAssessment} />}
       </div>
     </div>
   );

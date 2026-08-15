@@ -1,0 +1,392 @@
+export const pathwayMeta = {
+  ICU: { label: 'ICU', tool: 'mNUTRIC', reason: '重症照護路徑', priority: 1 },
+  LIVER: { label: 'cirrhosis', tool: 'RFH-NPT', reason: '肝硬化專屬營養風險', priority: 2 },
+  RENAL: { label: 'CKD5D / HD / PD', tool: '7-point SGA', reason: '腎臟病 / 透析營養狀態評估', priority: 3 },
+  ONCOLOGY: { label: 'active cancer', tool: 'PG-SGA SF', reason: '癌症營養風險與症狀 triage', priority: 4 },
+  GERIATRIC: { label: 'geriatric', tool: 'MNA-SF', reason: '老年住院營養篩檢', priority: 5 },
+  GENERAL: { label: 'general adult', tool: 'NRS-2002', reason: '一般成人住院營養風險篩檢', priority: 6 }
+};
+
+export const modifierLabels = {
+  heartFailure: 'heart failure',
+  dysphagia: 'dysphagia',
+  edemaAscites: 'edema / ascites',
+  refeeding: 'refeeding risk',
+  age65: 'age >=65',
+  poorIntake: 'poor intake'
+};
+
+export const toolRegistry = {
+  'NRS-2002': {
+    type: 'Nutrition screening',
+    population: 'General adult inpatient',
+    version: 'V1 hospital-approved',
+    licenseStatus: 'APPROVED'
+  },
+  'MNA-SF': {
+    type: 'Geriatric screening',
+    population: 'Age >=65',
+    version: 'License review required',
+    licenseStatus: 'PENDING_REVIEW'
+  },
+  '7-point SGA': {
+    type: 'Nutrition assessment',
+    population: 'CKD5D / dialysis',
+    version: 'V1 hospital-approved',
+    licenseStatus: 'APPROVED'
+  },
+  'RFH-NPT': {
+    type: 'Liver nutrition risk',
+    population: 'Cirrhosis',
+    version: 'License review required',
+    licenseStatus: 'PENDING_REVIEW'
+  },
+  'PG-SGA SF': {
+    type: 'Oncology triage',
+    population: 'Active cancer',
+    version: 'License review required',
+    licenseStatus: 'PENDING_REVIEW'
+  },
+  mNUTRIC: {
+    type: 'ICU nutrition risk',
+    population: 'Critical care',
+    version: 'V1 hospital-approved',
+    licenseStatus: 'APPROVED'
+  }
+};
+
+export const questions = [
+  {
+    id: 'intake',
+    label: '目前攝取量約為估計需求的多少？',
+    options: ['>=75%', '50-74%', '25-49%', '<25% 或幾乎無攝取', 'not assessed']
+  },
+  {
+    id: 'weightLoss',
+    label: '近期是否有非預期體重下降？',
+    options: ['否', '不確定', '是，輕度', '是，明顯']
+  },
+  {
+    id: 'muscleLoss',
+    label: '臨床觀察是否有肌肉流失？',
+    options: ['無', '不確定', '輕度', '中度', '嚴重']
+  },
+  {
+    id: 'gi',
+    label: '目前 GI tract 是否可使用？',
+    options: ['functional', 'partially functional', 'uncertain', 'unavailable']
+  },
+  {
+    id: 'swallow',
+    label: 'Oral feeding safety',
+    options: ['safe', 'suspected dysphagia', 'unsafe', 'not assessed']
+  }
+];
+
+const requiredQuestionIds = questions.map((question) => question.id);
+
+function isPositiveNumber(value) {
+  return value !== '' && Number.isFinite(Number(value)) && Number(value) > 0;
+}
+
+export function calculateBmi(weight, height) {
+  if (!isPositiveNumber(weight) || !isPositiveNumber(height)) return null;
+  return Number((Number(weight) / Math.pow(Number(height) / 100, 2)).toFixed(1));
+}
+
+export function getReferenceWeight(context) {
+  const fluidAffected = context.modifiers.edemaAscites || context.modifiers.heartFailure;
+  if (fluidAffected && isPositiveNumber(context.dryWeight)) {
+    return { value: Number(context.dryWeight), type: 'Dry weight' };
+  }
+  if (isPositiveNumber(context.weight)) {
+    return {
+      value: Number(context.weight),
+      type: fluidAffected ? 'Measured weight (review required)' : 'Measured weight'
+    };
+  }
+  return { value: null, type: 'Unavailable' };
+}
+
+export function getContextValidation(context) {
+  const blockers = [];
+  const warnings = [];
+  const age = Number(context.age);
+
+  if (context.age === '' || !Number.isFinite(age)) blockers.push('請輸入年齡。');
+  else if (age < 18) blockers.push('成人 V1 不適用於未滿 18 歲病人。');
+  else if (age > 120) warnings.push('年齡超出常見範圍，請再次確認。');
+
+  if (!isPositiveNumber(context.height)) blockers.push('請輸入有效的身高。');
+  else if (Number(context.height) < 100 || Number(context.height) > 250) warnings.push('身高超出常見成人範圍，請再次確認。');
+  if (!isPositiveNumber(context.weight)) blockers.push('請輸入有效的目前體重。');
+  else if (Number(context.weight) < 20 || Number(context.weight) > 400) warnings.push('目前體重超出常見成人範圍，請再次確認。');
+  if (!context.dietStatus) blockers.push('請確認目前飲食狀態。');
+
+  const selectedPathways = Object.entries(context.pathways || {}).filter(([, selected]) => selected).map(([key]) => key);
+  if (selectedPathways.length === 0) blockers.push('請至少確認一項主要臨床路徑（包含 general adult）。');
+  if (selectedPathways.includes('RENAL') && (!context.renalModality || context.renalModality === 'not assessed')) {
+    blockers.push('選擇 CKD5D / HD / PD 路徑時，請確認腎臟治療型態。');
+  }
+  if (context.dietStatus === 'NPO' && !context.npoReason) blockers.push('目前飲食狀態為 NPO，請確認 NPO 原因。');
+
+  const fluidAffected = context.modifiers.edemaAscites || context.modifiers.heartFailure;
+  if (fluidAffected && !isPositiveNumber(context.dryWeight)) {
+    warnings.push('體液狀態會影響目前體重，請確認可用的 Dry weight。');
+  }
+
+  return { blockers, warnings, isValid: blockers.length === 0 };
+}
+
+export function getPathway(context) {
+  const age = Number(context.age);
+  if (context.age === '' || !Number.isFinite(age) || age < 18) return null;
+
+  const selected = Object.entries(context.pathways)
+    .filter(([, value]) => value)
+    .map(([key]) => key);
+
+  if (!selected.length) return null;
+  if (age >= 65 && !selected.includes('GERIATRIC')) selected.push('GERIATRIC');
+
+  return selected.sort((a, b) => pathwayMeta[a].priority - pathwayMeta[b].priority)[0];
+}
+
+export function getRecommendation(context) {
+  const primary = getPathway(context);
+  if (!primary) return null;
+
+  const meta = pathwayMeta[primary];
+  const modifiers = [];
+  if (Number(context.age) >= 65) modifiers.push('age65');
+  Object.entries(context.modifiers).forEach(([key, value]) => {
+    if (value) modifiers.push(key);
+  });
+
+  const alternatives = Object.entries(pathwayMeta)
+    .filter(([key]) => key !== primary)
+    .slice(0, 4)
+    .map(([key, value]) => ({
+      tool: value.tool,
+      use: value.reason,
+      judgment: toolRegistry[value.tool].licenseStatus === 'APPROVED' ? (key === 'GENERAL' ? '後續使用' : '可追加') : '待授權審查'
+    }));
+
+  return {
+    primary,
+    primaryTool: meta.tool,
+    primaryPathway: meta.label,
+    reasons: [
+      meta.reason,
+      ...(context.pathways.RENAL ? [`renal modality: ${context.renalModality}`] : []),
+      ...modifiers.map((item) => modifierLabels[item]).filter(Boolean)
+    ],
+    modifiers,
+    alternatives,
+    nextStep: toolRegistry[meta.tool].licenseStatus === 'APPROVED' ? '蒐集共同評估資料' : '選擇院內已核准工具'
+  };
+}
+
+export function getAssessmentStatus(answers) {
+  const missing = requiredQuestionIds.filter((id) => answers[id] === '' || answers[id] == null);
+  const answered = requiredQuestionIds.length - missing.length;
+  return {
+    answered,
+    total: requiredQuestionIds.length,
+    percent: Math.round((answered / requiredQuestionIds.length) * 100),
+    missing,
+    isComplete: missing.length === 0
+  };
+}
+
+function getSafetyAndQuality(context, answers) {
+  const swallow = answers.swallow || context.oralSafety;
+  const intake = answers.intake || context.intake;
+  const safetyFlags = [];
+  const dataQualityFlags = [];
+
+  if (swallow === 'unsafe') safetyFlags.push('Oral feeding unsafe');
+  else if (swallow === 'suspected dysphagia' || swallow === 'not assessed' || (!swallow && context.modifiers.dysphagia)) {
+    safetyFlags.push('Swallowing safety pending');
+  }
+  if (context.modifiers.refeeding) safetyFlags.push('Refeeding risk');
+
+  if (context.modifiers.edemaAscites || context.modifiers.heartFailure) dataQualityFlags.push('Fluid-affected weight');
+  if (context.modifiers.dysphagia && swallow === 'safe') dataQualityFlags.push('Swallowing status conflicts with dysphagia modifier');
+  if ((answers.gi || context.giFunction) === 'uncertain') dataQualityFlags.push('GI tract uncertain');
+  if (intake === 'not assessed') dataQualityFlags.push('Intake not assessed');
+  if (context.modifiers.poorIntake && intake === '>=75%') dataQualityFlags.push('Intake status conflicts with poor-intake modifier');
+
+  return { safetyFlags, dataQualityFlags };
+}
+
+export function normalizeResult(context, answers, recommendation, overrideTool) {
+  const tool = overrideTool || recommendation?.primaryTool;
+  const intake = answers.intake || context.intake;
+  const assessmentStatus = getAssessmentStatus(answers);
+  const { safetyFlags, dataQualityFlags } = getSafetyAndQuality(context, answers);
+
+  if (!assessmentStatus.isComplete) {
+    return {
+      tool,
+      native: 'Incomplete assessment',
+      nutritionRisk: 'UNKNOWN',
+      malnutrition: 'UNKNOWN',
+      priority: safetyFlags.includes('Refeeding risk') ? 'RED' : 'GRAY',
+      safetyFlags,
+      dataQualityFlags,
+      reasons: ['Required assessment fields are missing', ...safetyFlags, ...dataQualityFlags],
+      assessmentStatus: 'INCOMPLETE'
+    };
+  }
+
+  if (!tool || toolRegistry[tool]?.licenseStatus !== 'APPROVED') {
+    return {
+      tool,
+      native: 'Tool unavailable pending license review',
+      nutritionRisk: 'UNKNOWN',
+      malnutrition: 'NOT_ASSESSED',
+      priority: safetyFlags.includes('Refeeding risk') ? 'RED' : 'GRAY',
+      safetyFlags,
+      dataQualityFlags,
+      reasons: ['Validated digital scoring is not available', ...safetyFlags, ...dataQualityFlags],
+      assessmentStatus: 'NOT_AVAILABLE'
+    };
+  }
+
+  const severeSignals = [
+    answers.muscleLoss === '嚴重',
+    answers.weightLoss === '是，明顯',
+    intake === '<25% 或幾乎無攝取'
+  ].filter(Boolean).length;
+  const moderateSignals = [
+    answers.muscleLoss === '中度',
+    answers.weightLoss === '是，輕度',
+    intake === '25-49%'
+  ].filter(Boolean).length;
+  const hasCriticalUnknown = dataQualityFlags.includes('GI tract uncertain') || dataQualityFlags.includes('Intake not assessed');
+  const red = severeSignals >= 2 || safetyFlags.includes('Refeeding risk');
+  const amber = severeSignals === 1 || moderateSignals >= 1 || safetyFlags.length > 0 || dataQualityFlags.length > 0;
+  const priority = red ? 'RED' : hasCriticalUnknown ? 'GRAY' : amber ? 'AMBER' : 'GRAY';
+  const native = 'Validated tool scoring not completed';
+  const reasons = [...new Set([
+    native,
+    intake,
+    ...safetyFlags,
+    ...dataQualityFlags,
+    ...(recommendation?.modifiers || []).map((item) => modifierLabels[item]).filter(Boolean)
+  ])];
+
+  return {
+    tool,
+    native,
+    nutritionRisk: 'UNKNOWN',
+    malnutrition: 'UNKNOWN',
+    priority,
+    safetyFlags,
+    dataQualityFlags,
+    reasons,
+    assessmentStatus: 'TOOL_SCORE_PENDING'
+  };
+}
+
+export function getRoute(context, answers, result) {
+  const oralSafety = answers.swallow || context.oralSafety;
+  const gi = answers.gi || context.giFunction;
+  const intake = answers.intake || context.intake;
+  const refeedingRisk = result.safetyFlags.includes('Refeeding risk');
+  const conditionForRefeeding = (route) => {
+    if (!refeedingRisk) return route;
+    if (route.level === 'Pending') {
+      return {
+        ...route,
+        title: `${route.title}；任何營養供應增加前先完成再餵食安全流程`,
+        why: [...route.why, 'Refeeding safety workflow required before nutrition advancement']
+      };
+    }
+    return {
+      ...route,
+      title: `完成再餵食安全流程後，${route.title}`,
+      status: 'CONDITIONAL',
+      why: [...route.why, 'Refeeding safety workflow required before nutrition advancement']
+    };
+  };
+
+  if (gi === 'uncertain' || !gi) {
+    return conditionForRefeeding({
+      level: 'Pending',
+      title: '先確認 GI tract 可用性，再評估 EN / PN appropriateness',
+      status: 'PENDING_ASSESSMENT',
+      why: ['GI tract availability 尚未確認']
+    });
+  }
+
+  if (gi === 'unavailable') {
+    return conditionForRefeeding({
+      level: 'R4',
+      title: '評估 PN appropriateness',
+      status: 'ASSESS_APPROPRIATENESS',
+      why: ['GI tract unavailable', '無法以 oral / enteral route 滿足需求']
+    });
+  }
+
+  if (context.dietStatus === 'NPO') {
+    return conditionForRefeeding({
+      level: 'Pending',
+      title: '目前為 NPO；先確認 NPO 原因與解除條件，再評估 nutrition support appropriateness',
+      status: 'PENDING_ASSESSMENT',
+      why: [`NPO reason: ${context.npoReason || 'not assessed'}`, 'Oral feeding recommendation blocked while NPO is active']
+    });
+  }
+
+  if (context.dietStatus === '管灌') {
+    return conditionForRefeeding({
+      level: 'R3',
+      title: '檢視目前 EN appropriateness、供應量與 GI tolerance',
+      status: 'CONTINUE_AND_REVIEW',
+      why: ['Current route: enteral tube feeding', 'GI tract is usable']
+    });
+  }
+
+  if (oralSafety !== 'safe') {
+    return conditionForRefeeding({
+      level: 'R3',
+      title: oralSafety === 'unsafe' ? 'Oral feeding 不安全，評估 EN appropriateness' : '先完成吞嚥安全評估，必要時評估 EN appropriateness',
+      status: oralSafety === 'unsafe' ? 'ASSESS_APPROPRIATENESS' : 'PENDING_ASSESSMENT',
+      why: ['Oral feeding safety 未通過', 'GI tract 可使用']
+    });
+  }
+
+  if (intake === 'not assessed' || !intake) {
+    return conditionForRefeeding({
+      level: 'Pending',
+      title: '先確認目前攝取量，再決定營養介入層級',
+      status: 'PENDING_ASSESSMENT',
+      why: ['Intake adequacy 尚未確認']
+    });
+  }
+
+  if (intake === '>=75%') {
+    return conditionForRefeeding({
+      level: 'R0',
+      title: '維持 therapeutic oral diet 並追蹤攝取',
+      status: 'RECOMMENDED',
+      why: ['Oral route safe', 'Intake currently adequate']
+    });
+  }
+
+  return conditionForRefeeding({
+    level: result.priority === 'RED' ? 'R2' : 'R1',
+    title: 'Optimize oral nutrition，並 consider ONS',
+    status: 'RECOMMENDED',
+    why: ['Oral route safe', '目前攝取不足', '若持續不足再評估 EN']
+  });
+}
+
+export function getResultTone(domain, value) {
+  if (value === 'HIGH' || value === 'SEVERE' || value === 'RED') return 'red';
+  if (value === 'AT_RISK' || value === 'MODERATE' || value === 'AMBER') return 'amber';
+  if (value === 'UNKNOWN' || value === 'NOT_APPLICABLE' || value === 'NOT_ASSESSED' || value === 'GRAY') return 'gray';
+  if (domain === 'priority' && value === 'GREEN') return 'green';
+  return 'green';
+}
