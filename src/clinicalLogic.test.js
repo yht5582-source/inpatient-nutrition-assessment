@@ -305,7 +305,7 @@ describe('normalization boundaries', () => {
       ...createEmptyToolAssessment('7-point SGA'),
       answers: {
         weightChange: 'stable', intakeChange: 'none', giSymptoms: 'none', functionalCapacity: 'normal',
-        diseaseBurden: 'low', subcutaneousFat: 'normal', muscleWasting: 'normal', overallScore: '3'
+        diseaseBurden: 'low', subcutaneousFat: 'preserved', muscleWasting: 'preserved', overallScore: '3'
       }
     }, baseContext);
     const result = normalizeResult(baseContext, completeAnswers, getRecommendation(baseContext), '7-point SGA', native);

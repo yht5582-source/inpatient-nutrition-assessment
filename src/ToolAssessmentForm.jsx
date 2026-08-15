@@ -1,5 +1,6 @@
 import { ExternalLink } from 'lucide-react';
 import { calculateBmi, toolRegistry } from './clinicalLogic.js';
+import { getLocalDateString } from './toolAssessments.js';
 
 const yesNoOptions = [
   { value: 'yes', label: '是' },
@@ -237,6 +238,7 @@ function ExternalToolFields({ toolId, assessment, onChange }) {
           <span>完成日期</span>
           <input
             type="date"
+            max={getLocalDateString()}
             value={assessment.answers.completedDate ?? ''}
             aria-invalid={Boolean(dateError)}
             aria-describedby={dateError ? 'completedDate-error' : undefined}

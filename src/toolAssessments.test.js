@@ -19,9 +19,17 @@ const completeSgaObservations = {
   giSymptoms: 'none',
   functionalCapacity: 'normal',
   diseaseBurden: 'low',
-  subcutaneousFat: 'normal',
-  muscleWasting: 'normal'
+  subcutaneousFat: 'preserved',
+  muscleWasting: 'preserved'
 };
+
+function getLocalToday() {
+  const now = new Date();
+  const year = String(now.getFullYear()).padStart(4, '0');
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 test('creates one isolated assessment record for every tool', () => {
   const store = createInitialToolAssessments();
@@ -479,9 +487,64 @@ describe('7-point SGA', () => {
       assert.deepEqual(result.invalid, ['overallScore']);
     }
   });
+
+  for (const field of Object.keys(completeSgaObservations)) {
+    test(`rejects an option that is not available for ${field}`, () => {
+      const result = scoreSevenPointSga({
+        ...completeSgaObservations,
+        overallScore: '6',
+        [field]: 'arbitrary-value'
+      });
+
+      assert.equal(result.nativeStatus, 'IN_PROGRESS');
+      assert.equal(result.nativeScore, null);
+      assert.equal(result.nativeCategory, '');
+      assert.deepEqual(result.invalid, [field]);
+    });
+  }
 });
 
 describe('official external result entry', () => {
+  test('accepts the user local current date for both official external tools', () => {
+    const today = getLocalToday();
+    const cases = [
+      ['MNA-SF', '12', '營養正常'],
+      ['PG-SGA SF', '4', '4–8 分']
+    ];
+
+    for (const [toolId, officialScore, officialCategory] of cases) {
+      const result = scoreOfficialExternal(toolId, {
+        officialScore,
+        officialCategory,
+        completedDate: today,
+        confirmed: true
+      });
+
+      assert.equal(result.nativeStatus, 'COMPLETE', toolId);
+    }
+  });
+
+  for (const completedDate of ['2026-02-30', '15/08/2026', '2999-01-01']) {
+    test(`rejects invalid or future official completion date ${completedDate}`, () => {
+      for (const [toolId, officialScore, officialCategory] of [
+        ['MNA-SF', '12', '營養正常'],
+        ['PG-SGA SF', '4', '4–8 分']
+      ]) {
+        const result = scoreOfficialExternal(toolId, {
+          officialScore,
+          officialCategory,
+          completedDate,
+          confirmed: true
+        });
+
+        assert.equal(result.nativeStatus, 'IN_PROGRESS', toolId);
+        assert.equal(result.nativeScore, null, toolId);
+        assert.equal(result.nativeCategory, '', toolId);
+        assert.deepEqual(result.invalid, ['completedDate'], toolId);
+      }
+    });
+  }
+
   test('keeps an external score in progress until official completion is confirmed', () => {
     const result = scoreOfficialExternal('MNA-SF', {
       officialScore: '10', officialCategory: '有營養不良風險', completedDate: '2026-08-15', confirmed: false

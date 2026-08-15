@@ -34,6 +34,15 @@ const SEVEN_POINT_SGA_FIELDS = [
   'muscleWasting',
   'overallScore'
 ];
+const SEVEN_POINT_SGA_OPTIONS = Object.freeze({
+  weightChange: ['loss', 'stable', 'gain'],
+  intakeChange: ['marked_reduction', 'moderate_reduction', 'none'],
+  giSymptoms: ['severe', 'mild', 'none'],
+  functionalCapacity: ['bedridden', 'reduced', 'normal'],
+  diseaseBurden: ['high', 'moderate', 'low'],
+  subcutaneousFat: ['severe', 'moderate', 'mild', 'preserved'],
+  muscleWasting: ['severe', 'moderate', 'mild', 'preserved']
+});
 const OFFICIAL_EXTERNAL_FIELDS = ['officialScore', 'officialCategory', 'completedDate', 'confirmed'];
 
 function isRecorded(value) {
@@ -52,6 +61,33 @@ function toIntegerInRange(value, minimum, maximum = Infinity) {
   return number != null && Number.isInteger(number) && number >= minimum && number <= maximum
     ? number
     : null;
+}
+
+export function getLocalDateString(date = new Date()) {
+  const year = String(date.getFullYear()).padStart(4, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function isValidCompletedDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+
+  const [, yearText, monthText, dayText] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  if (year < 1) return false;
+
+  const date = new Date(0);
+  date.setHours(0, 0, 0, 0);
+  date.setFullYear(year, month - 1, day);
+  const isRealCalendarDate = date.getFullYear() === year
+    && date.getMonth() === month - 1
+    && date.getDate() === day;
+
+  return isRealCalendarDate && value <= getLocalDateString();
 }
 
 function getAgeIssue(context) {
@@ -272,6 +308,11 @@ export function scoreSevenPointSga(answers = {}) {
   const missing = SEVEN_POINT_SGA_FIELDS.filter((field) => !isRecorded(answers[field]));
   if (missing.length > 0) return incompleteEvaluation(missing);
 
+  const invalidObservations = Object.entries(SEVEN_POINT_SGA_OPTIONS)
+    .filter(([field, options]) => !options.includes(answers[field]))
+    .map(([field]) => field);
+  if (invalidObservations.length > 0) return incompleteEvaluation([], invalidObservations);
+
   const overallScore = toIntegerInRange(answers.overallScore, 1, 7);
   if (overallScore == null) return incompleteEvaluation([], ['overallScore']);
 
@@ -332,6 +373,9 @@ export function scoreOfficialExternal(toolId, answers = {}) {
   const missing = OFFICIAL_EXTERNAL_FIELDS.filter((field) => !isRecorded(answers[field]));
   if (missing.length > 0) return incompleteEvaluation(missing);
 
+  if (!isValidCompletedDate(answers.completedDate)) {
+    return incompleteEvaluation([], ['completedDate']);
+  }
   if (answers.confirmed !== true) return incompleteEvaluation([], ['confirmed']);
 
   const maximumScore = toolId === 'MNA-SF' ? 14 : toolId === 'PG-SGA SF' ? 36 : null;
