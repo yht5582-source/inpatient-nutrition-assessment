@@ -4,6 +4,7 @@ import {
   ASSESSMENT_MODES,
   createEmptyToolAssessment,
   createInitialToolAssessments,
+  evaluateToolAssessment,
   scoreMNutric,
   scoreNrs2002,
   scoreOfficialExternal,
@@ -11,6 +12,16 @@ import {
   scoreSevenPointSga,
   updateToolAssessment
 } from './toolAssessments.js';
+
+const completeSgaObservations = {
+  weightChange: 'stable',
+  intakeChange: 'none',
+  giSymptoms: 'none',
+  functionalCapacity: 'normal',
+  diseaseBurden: 'low',
+  subcutaneousFat: 'normal',
+  muscleWasting: 'normal'
+};
 
 test('creates one isolated assessment record for every tool', () => {
   const store = createInitialToolAssessments();
@@ -38,6 +49,112 @@ test('updating one tool does not clear another tool', () => {
 
   assert.equal(second['NRS-2002'].answers.initialBmiLow, 'yes');
   assert.equal(second.mNUTRIC.answers.apacheIi, '20');
+});
+
+describe('tool assessment evaluation', () => {
+  test('dispatches every native tool through its reviewed scorer', () => {
+    const cases = [
+      ['NRS-2002', {
+        initialBmiLow: 'no', initialWeightLoss: 'no', initialReducedIntake: 'no', initialSevereIllness: 'no'
+      }, { age: 60 }, 0],
+      ['MNA-SF', {
+        officialScore: '12', officialCategory: '營養正常', completedDate: '2026-08-15', confirmed: true
+      }, {}, 12],
+      ['7-point SGA', { ...completeSgaObservations, overallScore: '6' }, {}, 6],
+      ['RFH-NPT', { alcoholicHepatitis: 'yes' }, {}, 6],
+      ['PG-SGA SF', {
+        officialScore: '4', officialCategory: '4–8 分', completedDate: '2026-08-15', confirmed: true
+      }, {}, 4],
+      ['mNUTRIC', { apacheIi: '20', sofa: '6', comorbidities: '2', preIcuDays: '0' }, { age: 50 }, 5]
+    ];
+
+    for (const [toolId, answers, context, expectedScore] of cases) {
+      const result = evaluateToolAssessment(toolId, {
+        ...createEmptyToolAssessment(toolId),
+        answers
+      }, context);
+
+      assert.equal(result.nativeStatus, 'COMPLETE', toolId);
+      assert.equal(result.nativeScore, expectedScore, toolId);
+      assert.equal(result.percent, 100, toolId);
+      assert.deepEqual(result.missing, [], toolId);
+      assert.deepEqual(result.invalid, [], toolId);
+    }
+  });
+
+  test('keeps both normalized domains unknown until a native tool is complete', () => {
+    const notStarted = evaluateToolAssessment(
+      'NRS-2002',
+      createEmptyToolAssessment('NRS-2002'),
+      { age: 60 }
+    );
+    const inProgress = evaluateToolAssessment('mNUTRIC', {
+      ...createEmptyToolAssessment('mNUTRIC'),
+      answers: { apacheIi: '20' }
+    }, { age: 60 });
+
+    assert.equal(notStarted.nativeStatus, 'NOT_STARTED');
+    assert.equal(notStarted.normalizedNutritionRisk, 'UNKNOWN');
+    assert.equal(notStarted.normalizedMalnutrition, 'UNKNOWN');
+    assert.equal(inProgress.nativeStatus, 'IN_PROGRESS');
+    assert.equal(inProgress.normalizedNutritionRisk, 'UNKNOWN');
+    assert.equal(inProgress.normalizedMalnutrition, 'UNKNOWN');
+  });
+
+  test('reports dynamic completion metrics without counting hidden RFH fields', () => {
+    const result = evaluateToolAssessment('RFH-NPT', {
+      ...createEmptyToolAssessment('RFH-NPT'),
+      answers: {
+        alcoholicHepatitis: 'no', tubeFeeding: 'no', fluidOverload: 'yes',
+        incompleteMealsFromFluid: 'sometimes'
+      }
+    }, { height: 170, weight: 70 });
+
+    assert.equal(result.answered, 4);
+    assert.equal(result.total, 6);
+    assert.equal(result.percent, 67);
+    assert.deepEqual(result.missing, ['intakeReducedFifty', 'fluidWeightLoss']);
+    assert.deepEqual(result.invalid, []);
+  });
+
+  test('treats an explicit false confirmation as progress rather than not started', () => {
+    const result = evaluateToolAssessment('MNA-SF', {
+      ...createEmptyToolAssessment('MNA-SF'),
+      answers: { confirmed: false }
+    }, {});
+
+    assert.equal(result.nativeStatus, 'IN_PROGRESS');
+    assert.equal(result.answered, 1);
+    assert.equal(result.total, 4);
+  });
+
+  test('sets, preserves, sources, and clears completion timestamps', () => {
+    const now = '2026-08-15T08:00:00.000Z';
+    const completeNrs = {
+      initialBmiLow: 'no', initialWeightLoss: 'no', initialReducedIntake: 'no', initialSevereIllness: 'no'
+    };
+    const first = updateToolAssessment(
+      createInitialToolAssessments(), 'NRS-2002', completeNrs, { age: 60 }, now
+    );
+    const preserved = updateToolAssessment(
+      first, 'NRS-2002', { initialWeightLoss: 'yes', nutritionScore: '1', diseaseScore: '1' }, { age: 60 },
+      '2026-08-16T08:00:00.000Z'
+    );
+    const incomplete = updateToolAssessment(
+      preserved, 'NRS-2002', { diseaseScore: '' }, { age: 60 }, '2026-08-17T08:00:00.000Z'
+    );
+    const external = updateToolAssessment(createInitialToolAssessments(), 'MNA-SF', {
+      officialScore: '12', officialCategory: '營養正常', completedDate: '2026-08-14', confirmed: true
+    }, {}, now);
+
+    assert.equal(first['NRS-2002'].nativeStatus, 'COMPLETE');
+    assert.equal(first['NRS-2002'].completedAt, now);
+    assert.equal(preserved['NRS-2002'].nativeStatus, 'COMPLETE');
+    assert.equal(preserved['NRS-2002'].completedAt, now);
+    assert.equal(incomplete['NRS-2002'].nativeStatus, 'IN_PROGRESS');
+    assert.equal(incomplete['NRS-2002'].completedAt, '');
+    assert.equal(external['MNA-SF'].completedAt, '2026-08-14');
+  });
 });
 
 describe('NRS-2002', () => {
@@ -254,16 +371,6 @@ describe('RFH-NPT', () => {
     assert.deepEqual(result.missing, ['fluidWeightLoss']);
   });
 });
-
-const completeSgaObservations = {
-  weightChange: 'stable',
-  intakeChange: 'none',
-  giSymptoms: 'none',
-  functionalCapacity: 'normal',
-  diseaseBurden: 'low',
-  subcutaneousFat: 'normal',
-  muscleWasting: 'normal'
-};
 
 describe('7-point SGA', () => {
   for (const field of [...Object.keys(completeSgaObservations), 'overallScore']) {

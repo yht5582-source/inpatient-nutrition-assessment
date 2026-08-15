@@ -368,17 +368,105 @@ export function createInitialToolAssessments() {
   );
 }
 
-export function updateToolAssessment(store, toolId, patch) {
+function getAssessmentFields(toolId, answers, context, evaluation) {
+  const answerField = (field) => ({ field, value: answers[field] });
+  const contextField = (field) => ({ field, value: context?.[field] });
+
+  if (toolId === 'NRS-2002') {
+    const fields = [...NRS_INITIAL_FIELDS.map(answerField), contextField('age')];
+    if (NRS_INITIAL_FIELDS.some((field) => answers[field] === 'yes')) {
+      fields.push(...NRS_FINAL_FIELDS.map(answerField));
+    }
+    return fields;
+  }
+  if (toolId === 'mNUTRIC') {
+    return [...MNUTRIC_FIELDS.map(answerField), contextField('age')];
+  }
+  if (toolId === '7-point SGA') return SEVEN_POINT_SGA_FIELDS.map(answerField);
+  if (toolId === 'MNA-SF' || toolId === 'PG-SGA SF') {
+    return OFFICIAL_EXTERNAL_FIELDS.map(answerField);
+  }
+  if (toolId === 'RFH-NPT') {
+    const affirmativeFields = RFH_INITIAL_FIELDS.filter((field) => answers[field] === 'yes');
+    if (evaluation.nativeStatus === 'COMPLETE' && affirmativeFields.length > 0) {
+      return affirmativeFields.map(answerField);
+    }
+
+    const fields = RFH_INITIAL_FIELDS.map(answerField);
+    if (RFH_INITIAL_FIELDS.every((field) => answers[field] === 'no')) {
+      fields.push(answerField('fluidOverload'));
+      if (answers.fluidOverload === 'no') {
+        fields.push(answerField('weightLossPercent'), answerField('acuteNoIntakeFiveDays'));
+        fields.push(contextField('height'), contextField('weight'));
+      } else if (answers.fluidOverload === 'yes') {
+        fields.push(...RFH_FLUID_FIELDS.map(answerField));
+      }
+    }
+    return fields;
+  }
+  return [];
+}
+
+const toolEvaluators = {
+  'NRS-2002': (answers, context) => scoreNrs2002(answers, context),
+  'MNA-SF': (answers) => scoreOfficialExternal('MNA-SF', answers),
+  '7-point SGA': (answers) => scoreSevenPointSga(answers),
+  'RFH-NPT': (answers, context) => scoreRfhNpt(answers, context),
+  'PG-SGA SF': (answers) => scoreOfficialExternal('PG-SGA SF', answers),
+  mNUTRIC: (answers, context) => scoreMNutric(answers, context)
+};
+
+export function evaluateToolAssessment(toolId, record = {}, context = {}) {
+  const evaluate = toolEvaluators[toolId];
+  if (!evaluate) throw new RangeError(`Unknown tool assessment: ${toolId}`);
+
+  const answers = record.answers || {};
+  const evaluation = evaluate(answers, context);
+  const hasRecordedAnswer = Object.values(answers).some(isRecorded);
+  const nativeStatus = hasRecordedAnswer ? evaluation.nativeStatus : 'NOT_STARTED';
+  const fields = getAssessmentFields(toolId, answers, context, evaluation);
+  const answered = fields.filter(({ value }) => isRecorded(value)).length;
+  const total = fields.length;
+  const missing = fields.filter(({ value }) => !isRecorded(value)).map(({ field }) => field);
+  const complete = nativeStatus === 'COMPLETE';
+
+  return {
+    ...record,
+    answers,
+    nativeStatus,
+    nativeScore: complete ? evaluation.nativeScore : null,
+    nativeCategory: complete ? evaluation.nativeCategory : '',
+    completedAt: record.completedAt || '',
+    sourceMode: record.sourceMode || TOOL_ASSESSMENT_MODES[toolId],
+    normalizedNutritionRisk: complete ? evaluation.normalizedNutritionRisk : 'UNKNOWN',
+    normalizedMalnutrition: complete ? evaluation.normalizedMalnutrition : 'UNKNOWN',
+    answered,
+    total,
+    percent: total === 0 ? 0 : Math.round((answered / total) * 100),
+    missing,
+    invalid: evaluation.invalid || []
+  };
+}
+
+export function updateToolAssessment(
+  store,
+  toolId,
+  patch,
+  context,
+  now = new Date().toISOString()
+) {
   const current = store[toolId] || createEmptyToolAssessment(toolId);
   const answers = { ...current.answers, ...patch };
-  const hasRecordedAnswer = Object.values(answers).some((value) => value !== '' && value != null && value !== false);
+  const evaluation = evaluateToolAssessment(toolId, { ...current, answers }, context);
+  const completedAt = evaluation.nativeStatus === 'COMPLETE'
+    ? current.completedAt || answers.completedDate || now
+    : '';
 
   return {
     ...store,
     [toolId]: {
-      ...current,
-      answers,
-      nativeStatus: hasRecordedAnswer ? 'IN_PROGRESS' : 'NOT_STARTED'
+      ...evaluation,
+      completedAt
     }
   };
 }

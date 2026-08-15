@@ -1,3 +1,5 @@
+import { evaluateToolAssessment } from './toolAssessments.js';
+
 export const pathwayMeta = {
   ICU: { label: 'ICU', tool: 'mNUTRIC', reason: '重症照護路徑', priority: 1 },
   LIVER: { label: 'cirrhosis', tool: 'RFH-NPT', reason: '肝硬化專屬營養風險', priority: 2 },
@@ -22,15 +24,24 @@ const chineseStatusLabels = {
   GREEN: '綠色',
   GRAY: '灰色',
   HIGH: '高風險',
+  LOW: '低風險',
   AT_RISK: '有風險',
   SEVERE: '嚴重',
   MODERATE: '中度',
+  NO_MALNUTRITION: '無營養不良',
+  MALNOURISHED: '營養不良',
   UNKNOWN: '未知',
   NOT_ASSESSED: '尚未評估',
   NOT_APPLICABLE: '不適用',
   INCOMPLETE: '評估未完成',
   NOT_AVAILABLE: '工具目前不可用',
   TOOL_SCORE_PENDING: '量表計分待完成',
+  NOT_STARTED: '尚未開始',
+  IN_PROGRESS: '進行中',
+  COMPLETE: '已完成',
+  IN_APP_AUTOSCORE: '站內自動計分',
+  CLINICIAN_RATED: '營養師整體評定',
+  OFFICIAL_EXTERNAL: '官方工具結果回填',
   RECOMMENDED: '建議執行',
   CONSIDER: '可考慮',
   CONDITIONAL: '有條件執行',
@@ -43,6 +54,7 @@ const chineseStatusLabels = {
   'Incomplete assessment': '評估尚未完成',
   'Tool unavailable pending license review': '工具尚待授權審查，目前不可用',
   'Validated tool scoring not completed': '尚未完成經驗證量表計分',
+  '原始評估未完成': '原始評估未完成',
   'Validated digital scoring is not available': '目前沒有可用的經驗證數位計分',
   'Required assessment fields are missing': '必要評估欄位尚未完成',
   'Dry weight': '乾體重',
@@ -358,7 +370,24 @@ function getSafetyAndQuality(context, answers) {
   return { safetyFlags, dataQualityFlags };
 }
 
-export function normalizeResult(context, answers, recommendation, overrideTool) {
+function getClinicalPriority(answers, intake, safetyFlags, dataQualityFlags) {
+  const severeSignals = [
+    answers.muscleLoss === '嚴重',
+    answers.weightLoss === '是，明顯',
+    intake === '<25% 或幾乎無攝取'
+  ].filter(Boolean).length;
+  const moderateSignals = [
+    answers.muscleLoss === '中度',
+    answers.weightLoss === '是，輕度',
+    intake === '25-49%'
+  ].filter(Boolean).length;
+  const red = severeSignals >= 2 || safetyFlags.includes('Refeeding risk');
+  const amber = severeSignals === 1 || moderateSignals >= 1 || safetyFlags.length > 0 || dataQualityFlags.length > 0;
+  const criticalUnknown = dataQualityFlags.includes('GI tract uncertain') || dataQualityFlags.includes('Intake not assessed');
+  return red ? 'RED' : criticalUnknown ? 'GRAY' : amber ? 'AMBER' : 'GRAY';
+}
+
+export function normalizeResult(context, answers, recommendation, overrideTool, toolAssessment) {
   const tool = overrideTool || recommendation?.primaryTool;
   const intake = answers.intake || context.intake;
   const assessmentStatus = getAssessmentStatus(answers);
@@ -378,21 +407,12 @@ export function normalizeResult(context, answers, recommendation, overrideTool) 
     };
   }
 
-  const severeSignals = [
-    answers.muscleLoss === '嚴重',
-    answers.weightLoss === '是，明顯',
-    intake === '<25% 或幾乎無攝取'
-  ].filter(Boolean).length;
-  const moderateSignals = [
-    answers.muscleLoss === '中度',
-    answers.weightLoss === '是，輕度',
-    intake === '25-49%'
-  ].filter(Boolean).length;
-  const hasCriticalUnknown = dataQualityFlags.includes('GI tract uncertain') || dataQualityFlags.includes('Intake not assessed');
-  const red = severeSignals >= 2 || safetyFlags.includes('Refeeding risk');
-  const amber = severeSignals === 1 || moderateSignals >= 1 || safetyFlags.length > 0 || dataQualityFlags.length > 0;
-  const priority = red ? 'RED' : hasCriticalUnknown ? 'GRAY' : amber ? 'AMBER' : 'GRAY';
-  const native = 'Validated tool scoring not completed';
+  const priority = getClinicalPriority(answers, intake, safetyFlags, dataQualityFlags);
+  const nativeEvaluation = toolAssessment?.answered == null
+    ? evaluateToolAssessment(tool, toolAssessment, context)
+    : toolAssessment;
+  const nativeComplete = nativeEvaluation.nativeStatus === 'COMPLETE';
+  const native = nativeComplete ? nativeEvaluation.nativeCategory : '原始評估未完成';
   const reasons = [...new Set([
     native,
     intake,
@@ -404,13 +424,23 @@ export function normalizeResult(context, answers, recommendation, overrideTool) 
   return {
     tool,
     native,
-    nutritionRisk: 'UNKNOWN',
-    malnutrition: 'UNKNOWN',
+    nativeScore: nativeComplete ? nativeEvaluation.nativeScore : null,
+    nativeCategory: nativeComplete ? nativeEvaluation.nativeCategory : '',
+    nativeStatus: nativeEvaluation.nativeStatus,
+    sourceMode: nativeEvaluation.sourceMode,
+    completedAt: nativeEvaluation.completedAt,
+    answered: nativeEvaluation.answered,
+    total: nativeEvaluation.total,
+    percent: nativeEvaluation.percent,
+    missing: nativeEvaluation.missing,
+    invalid: nativeEvaluation.invalid,
+    nutritionRisk: nativeComplete ? nativeEvaluation.normalizedNutritionRisk : 'UNKNOWN',
+    malnutrition: nativeComplete ? nativeEvaluation.normalizedMalnutrition : 'UNKNOWN',
     priority,
     safetyFlags,
     dataQualityFlags,
     reasons,
-    assessmentStatus: 'TOOL_SCORE_PENDING'
+    assessmentStatus: nativeComplete ? 'COMPLETE' : 'TOOL_SCORE_PENDING'
   };
 }
 
@@ -508,7 +538,7 @@ export function getRoute(context, answers, result) {
 }
 
 export function getResultTone(domain, value) {
-  if (value === 'HIGH' || value === 'SEVERE' || value === 'RED') return 'red';
+  if (value === 'HIGH' || value === 'SEVERE' || value === 'MALNOURISHED' || value === 'RED') return 'red';
   if (value === 'AT_RISK' || value === 'MODERATE' || value === 'AMBER') return 'amber';
   if (value === 'UNKNOWN' || value === 'NOT_APPLICABLE' || value === 'NOT_ASSESSED' || value === 'GRAY') return 'gray';
   if (domain === 'priority' && value === 'GREEN') return 'green';

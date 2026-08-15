@@ -10,9 +10,11 @@ import {
   getPathway,
   getRecommendation,
   getReferenceWeight,
+  getResultTone,
   getRoute,
   normalizeResult
 } from './clinicalLogic.js';
+import { createEmptyToolAssessment, evaluateToolAssessment } from './toolAssessments.js';
 
 const baseContext = {
   age: 76,
@@ -189,6 +191,25 @@ describe('Chinese display labels', () => {
     assert.equal(getChineseStatus('PENDING_ASSESSMENT'), '待完成評估');
   });
 
+  test('translates native assessment outcomes, states, and modes', () => {
+    assert.equal(getChineseStatus('LOW'), '低風險');
+    assert.equal(getChineseStatus('NO_MALNUTRITION'), '無營養不良');
+    assert.equal(getChineseStatus('MALNOURISHED'), '營養不良');
+    assert.equal(getChineseStatus('NOT_STARTED'), '尚未開始');
+    assert.equal(getChineseStatus('IN_PROGRESS'), '進行中');
+    assert.equal(getChineseStatus('COMPLETE'), '已完成');
+    assert.equal(getChineseStatus('IN_APP_AUTOSCORE'), '站內自動計分');
+    assert.equal(getChineseStatus('CLINICIAN_RATED'), '營養師整體評定');
+    assert.equal(getChineseStatus('OFFICIAL_EXTERNAL'), '官方工具結果回填');
+    assert.equal(getChineseStatus('原始評估未完成'), '原始評估未完成');
+  });
+
+  test('uses clinical tones for native low-risk and malnutrition outcomes', () => {
+    assert.equal(getResultTone('risk', 'LOW'), 'green');
+    assert.equal(getResultTone('malnutrition', 'NO_MALNUTRITION'), 'green');
+    assert.equal(getResultTone('malnutrition', 'MALNOURISHED'), 'red');
+  });
+
   test('preserves an unmapped native result instead of hiding it', () => {
     assert.equal(getChineseStatus('NRS-2002'), 'NRS-2002');
   });
@@ -197,7 +218,12 @@ describe('Chinese display labels', () => {
 describe('normalization boundaries', () => {
   test('keeps refeeding and fluid reliability separate from the native nutrition result', () => {
     const plainRecommendation = getRecommendation(baseContext);
-    const plain = normalizeResult(baseContext, completeAnswers, plainRecommendation, 'mNUTRIC');
+    const pendingNative = evaluateToolAssessment(
+      'mNUTRIC',
+      createEmptyToolAssessment('mNUTRIC'),
+      baseContext
+    );
+    const plain = normalizeResult(baseContext, completeAnswers, plainRecommendation, 'mNUTRIC', pendingNative);
     const context = {
       ...baseContext,
       modifiers: {
@@ -206,7 +232,7 @@ describe('normalization boundaries', () => {
         edemaAscites: true
       }
     };
-    const flagged = normalizeResult(context, completeAnswers, getRecommendation(context), 'mNUTRIC');
+    const flagged = normalizeResult(context, completeAnswers, getRecommendation(context), 'mNUTRIC', pendingNative);
 
     assert.equal(flagged.native, plain.native);
     assert.equal(flagged.nutritionRisk, plain.nutritionRisk);
@@ -217,17 +243,119 @@ describe('normalization boundaries', () => {
   });
 
   test('does not treat common clinical questions as a validated native tool score', () => {
+    const pendingNative = evaluateToolAssessment(
+      'mNUTRIC',
+      createEmptyToolAssessment('mNUTRIC'),
+      baseContext
+    );
     const result = normalizeResult(
       baseContext,
       completeAnswers,
       getRecommendation(baseContext),
-      'mNUTRIC'
+      'mNUTRIC',
+      pendingNative
     );
 
-    assert.equal(result.native, 'Validated tool scoring not completed');
+    assert.equal(result.nativeStatus, 'NOT_STARTED');
+    assert.equal(result.native, '原始評估未完成');
     assert.equal(result.nutritionRisk, 'UNKNOWN');
     assert.equal(result.malnutrition, 'UNKNOWN');
     assert.equal(result.assessmentStatus, 'TOOL_SCORE_PENDING');
+    assert.equal(result.nativeScore, null);
+  });
+
+  test('returns common clinical results while keeping an unfinished native tool unknown', () => {
+    const result = normalizeResult(
+      baseContext,
+      completeAnswers,
+      getRecommendation(baseContext),
+      'NRS-2002',
+      createEmptyToolAssessment('NRS-2002')
+    );
+
+    assert.equal(result.nativeStatus, 'NOT_STARTED');
+    assert.equal(result.native, '原始評估未完成');
+    assert.equal(result.nutritionRisk, 'UNKNOWN');
+    assert.equal(result.malnutrition, 'UNKNOWN');
+    assert.equal(result.assessmentStatus, 'TOOL_SCORE_PENDING');
+    assert.deepEqual(result.missing, [
+      'initialBmiLow', 'initialWeightLoss', 'initialReducedIntake', 'initialSevereIllness'
+    ]);
+  });
+
+  test('normalizes a completed NRS-2002 result only into the nutrition-risk domain', () => {
+    const native = evaluateToolAssessment('NRS-2002', {
+      ...createEmptyToolAssessment('NRS-2002'),
+      answers: {
+        initialBmiLow: 'yes', initialWeightLoss: 'no', initialReducedIntake: 'no', initialSevereIllness: 'no',
+        nutritionScore: '2', diseaseScore: '1'
+      }
+    }, { ...baseContext, age: 70 });
+    const result = normalizeResult(baseContext, completeAnswers, getRecommendation(baseContext), 'NRS-2002', native);
+
+    assert.equal(result.nutritionRisk, 'AT_RISK');
+    assert.equal(result.malnutrition, 'NOT_APPLICABLE');
+    assert.equal(result.nativeScore, 4);
+    assert.equal(result.nativeStatus, 'COMPLETE');
+    assert.equal(result.sourceMode, 'IN_APP_AUTOSCORE');
+  });
+
+  test('normalizes a completed 7-point SGA result only into the malnutrition domain', () => {
+    const native = evaluateToolAssessment('7-point SGA', {
+      ...createEmptyToolAssessment('7-point SGA'),
+      answers: {
+        weightChange: 'stable', intakeChange: 'none', giSymptoms: 'none', functionalCapacity: 'normal',
+        diseaseBurden: 'low', subcutaneousFat: 'normal', muscleWasting: 'normal', overallScore: '3'
+      }
+    }, baseContext);
+    const result = normalizeResult(baseContext, completeAnswers, getRecommendation(baseContext), '7-point SGA', native);
+
+    assert.equal(result.nutritionRisk, 'NOT_APPLICABLE');
+    assert.equal(result.malnutrition, 'MODERATE');
+  });
+
+  test('normalizes the supplied evaluation without rescoring it from common context', () => {
+    const native = evaluateToolAssessment('NRS-2002', {
+      ...createEmptyToolAssessment('NRS-2002'),
+      answers: {
+        initialBmiLow: 'yes', initialWeightLoss: 'no', initialReducedIntake: 'no', initialSevereIllness: 'no',
+        nutritionScore: '1', diseaseScore: '1'
+      }
+    }, { ...baseContext, age: 69 });
+    const result = normalizeResult(baseContext, completeAnswers, getRecommendation(baseContext), 'NRS-2002', native);
+
+    assert.equal(native.nativeScore, 2);
+    assert.equal(result.nativeScore, 2);
+    assert.equal(result.nutritionRisk, 'LOW');
+  });
+
+  test('keeps priority derived from common and safety data instead of native scores', () => {
+    const highNative = evaluateToolAssessment('mNUTRIC', {
+      ...createEmptyToolAssessment('mNUTRIC'),
+      answers: { apacheIi: '29', sofa: '10', comorbidities: '2', preIcuDays: '1' }
+    }, { ...baseContext, age: 75 });
+    const lowNative = evaluateToolAssessment('NRS-2002', {
+      ...createEmptyToolAssessment('NRS-2002'),
+      answers: {
+        initialBmiLow: 'no', initialWeightLoss: 'no', initialReducedIntake: 'no', initialSevereIllness: 'no'
+      }
+    }, baseContext);
+
+    const benignCommon = normalizeResult(
+      baseContext, completeAnswers, getRecommendation(baseContext), 'mNUTRIC', highNative
+    );
+    const severeCommon = normalizeResult(
+      baseContext,
+      { ...completeAnswers, intake: '<25% 或幾乎無攝取', muscleLoss: '嚴重' },
+      getRecommendation(baseContext),
+      'NRS-2002',
+      lowNative
+    );
+
+    assert.equal(benignCommon.nutritionRisk, 'HIGH');
+    assert.equal(benignCommon.priority, 'GRAY');
+    assert.equal(severeCommon.nutritionRisk, 'LOW');
+    assert.equal(severeCommon.priority, 'RED');
   });
 
   test('flags contradictory intake data instead of silently choosing one value', () => {
@@ -235,7 +363,12 @@ describe('normalization boundaries', () => {
       ...baseContext,
       modifiers: { ...baseContext.modifiers, poorIntake: true }
     };
-    const result = normalizeResult(context, completeAnswers, getRecommendation(context), 'NRS-2002');
+    const native = evaluateToolAssessment(
+      'NRS-2002',
+      createEmptyToolAssessment('NRS-2002'),
+      context
+    );
+    const result = normalizeResult(context, completeAnswers, getRecommendation(context), 'NRS-2002', native);
 
     assert.ok(result.dataQualityFlags.includes('Intake status conflicts with poor-intake modifier'));
   });
@@ -251,6 +384,20 @@ describe('normalization boundaries', () => {
     assert.equal(result.native, 'Incomplete assessment');
     assert.equal(result.nutritionRisk, 'UNKNOWN');
     assert.equal(result.malnutrition, 'UNKNOWN');
+    assert.equal(result.priority, 'GRAY');
+    assert.equal(result.assessmentStatus, 'INCOMPLETE');
+  });
+
+  test('preserves incomplete common-assessment priority before native evaluation', () => {
+    const result = normalizeResult(
+      baseContext,
+      { ...completeAnswers, weightLoss: '', swallow: 'unsafe' },
+      getRecommendation(baseContext),
+      'NRS-2002',
+      createEmptyToolAssessment('NRS-2002')
+    );
+
+    assert.deepEqual(result.safetyFlags, ['Oral feeding unsafe']);
     assert.equal(result.priority, 'GRAY');
     assert.equal(result.assessmentStatus, 'INCOMPLETE');
   });
