@@ -439,7 +439,7 @@ function AssessmentScreen({
 
   useEffect(() => {
     if (!focusNativeAssessment) return;
-    nativeAssessmentRef.current?.scrollIntoView({ block: 'start' });
+    focusNativeAssessmentElement(nativeAssessmentRef.current);
     setFocusNativeAssessment(false);
   }, [focusNativeAssessment, setFocusNativeAssessment]);
 
@@ -467,7 +467,12 @@ function AssessmentScreen({
             ))}
           </div>
         </Panel>
-        <div id="native-tool-assessment" ref={nativeAssessmentRef}>
+        <div
+          id="native-tool-assessment"
+          className="native-assessment-anchor"
+          ref={nativeAssessmentRef}
+          tabIndex={-1}
+        >
           <Panel title={`工具原始評估：${selectedTool}`} action={`${nativeEvaluation.percent}%`}>
             <ToolAssessmentForm
               toolId={selectedTool}
@@ -514,6 +519,12 @@ export function createContinueNativeAssessmentHandler(setFocusNativeAssessment, 
   };
 }
 
+export function focusNativeAssessmentElement(element) {
+  if (!element) return;
+  element.focus({ preventScroll: true });
+  element.scrollIntoView({ block: 'start' });
+}
+
 export function ResultScreen({
   context,
   recommendation,
@@ -531,6 +542,11 @@ export function ResultScreen({
   const route = getRoute(context, answers, result);
   const referenceWeight = getReferenceWeight(context);
   const nativeComplete = result.nativeStatus === 'COMPLETE';
+  const officialExternal = result.sourceMode === 'OFFICIAL_EXTERNAL';
+  const completionLabel = officialExternal ? '完成日期' : '完成日期／時間';
+  const completionValue = officialExternal
+    ? nativeEvaluation.answers?.completedDate || '未記錄'
+    : formatCompletedAt(result.completedAt);
   const pendingNativeItems = new Set([...(result.missing || []), ...(result.invalid || [])]).size;
   return (
     <section className="screen result-screen">
@@ -579,7 +595,7 @@ export function ResultScreen({
               <Meta label="原始分數" value={result.nativeScore ?? '—'} />
               <Meta label="原始分類" value={result.nativeCategory || '—'} />
               <Meta label="評估方式" value={getChineseStatus(result.sourceMode)} />
-              <Meta label="完成日期／時間" value={formatCompletedAt(result.completedAt)} />
+              <Meta label={completionLabel} value={completionValue} />
               <Meta
                 label="正規化領域"
                 value={`營養風險：${getChineseStatus(result.nutritionRisk)}；營養不良：${getChineseStatus(result.malnutrition)}`}
@@ -662,7 +678,7 @@ export function ResultScreen({
 原始分數：${nativeComplete ? result.nativeScore : '未完成'}
 原始分類：${nativeComplete ? result.nativeCategory : '未完成'}
 來源模式：${getChineseStatus(result.sourceMode)}
-${nativeComplete ? `完成日期／時間：${formatCompletedAt(result.completedAt)}
+${nativeComplete ? `${completionLabel}：${completionValue}
 正規化領域：營養風險 ${getChineseStatus(result.nutritionRisk)}；營養不良 ${getChineseStatus(result.malnutrition)}` : '原始量表尚未完成；不得以共同臨床資料推測量表分數'}
 營養風險：${getChineseStatus(result.nutritionRisk)}
 營養不良狀態：${getChineseStatus(result.malnutrition)}
@@ -674,7 +690,13 @@ ${overrideTool ? `專業調整：${overrideTool}；原因：${overrideReason}\n`
 安全警示：${result.safetyFlags.map(getChineseStatus).join('、') || '目前無安全警示'}`}</pre>
       </Panel>
 
-      <FooterActions back="回評估" next="完成並建立新評估" onBack={() => setActiveStep('assessment')} onNext={onFinish} />
+      <FooterActions
+        back="回評估"
+        next={nativeComplete ? '完成並建立新評估' : '原始評估未完成'}
+        onBack={() => setActiveStep('assessment')}
+        onNext={onFinish}
+        nextDisabled={!nativeComplete}
+      />
     </section>
   );
 }

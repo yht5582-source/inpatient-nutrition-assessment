@@ -101,6 +101,7 @@ describe('ResultScreen native assessment presentation', () => {
     assert.match(html, /4 項/);
     assert.match(html, /原始量表尚未完成；不得以共同臨床資料推測量表分數/);
     assert.match(html, /繼續完成 NRS-2002 評估/);
+    assert.match(html, /<button class="primary-button" disabled="">原始評估未完成<\/button>/);
   });
 
   test('shows score, category, mode, completion time, and normalized domains when complete', () => {
@@ -127,6 +128,7 @@ describe('ResultScreen native assessment presentation', () => {
     assert.match(html, /正規化領域/);
     assert.match(html, /來源模式：站內自動計分/);
     assert.doesNotMatch(html, /繼續完成 NRS-2002 評估/);
+    assert.match(html, /<button class="primary-button">完成並建立新評估<\/button>/);
   });
 
   test('explicitly identifies official result entry without local rescoring', () => {
@@ -148,6 +150,10 @@ describe('ResultScreen native assessment presentation', () => {
     });
 
     assert.match(html, /官方結果回填；本站未重新計分/);
+    assert.match(html, /<span>完成日期<\/span><strong>2026-08-15<\/strong>/);
+    assert.match(html, /完成日期：2026-08-15/);
+    assert.doesNotMatch(html, /完成日期／時間/);
+    assert.doesNotMatch(html, /完成日期(?:<\/span><strong>|：)[^<\n]*\d{1,2}:\d{2}/);
   });
 });
 
@@ -189,4 +195,25 @@ test('continuation handler preserves assessment state and only changes focus and
   assert.strictEqual(assessmentState.toolAssessments, toolAssessmentsState);
   assert.equal(assessmentState.overrideTool, 'NRS-2002');
   assert.equal(assessmentState.overrideReason, '臨床判斷');
+});
+
+test('native assessment focus helper focuses before scrolling the continuation destination', () => {
+  assert.equal(
+    typeof appModule.focusNativeAssessmentElement,
+    'function',
+    'focus helper must be exported for continuation accessibility tests'
+  );
+
+  const calls = [];
+  const target = {
+    focus: (options) => calls.push(['focus', options]),
+    scrollIntoView: (options) => calls.push(['scroll', options])
+  };
+
+  appModule.focusNativeAssessmentElement(target);
+
+  assert.deepEqual(calls, [
+    ['focus', { preventScroll: true }],
+    ['scroll', { block: 'start' }]
+  ]);
 });

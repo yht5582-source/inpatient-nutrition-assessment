@@ -864,6 +864,16 @@ button {
   gap: 16px;
 }
 
+.native-assessment-anchor {
+  min-width: 0;
+  outline: none;
+}
+
+.native-assessment-anchor:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 4px;
+}
+
 .native-status {
   min-width: 0;
   display: flex;
