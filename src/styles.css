@@ -1107,6 +1107,49 @@ button {
   gap: 14px;
 }
 
+.native-result-pending,
+.native-result-complete {
+  min-width: 0;
+  display: grid;
+}
+
+.native-result-progress {
+  margin: 12px 0 0;
+}
+
+.native-result-warning,
+.native-result-note {
+  margin: 12px 0 0;
+  color: #5d4930;
+  font-size: 13px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.native-result-note {
+  padding: 10px 12px;
+  color: #344657;
+  background: #f5f8fa;
+  border-left: 4px solid var(--teal);
+}
+
+.native-continue {
+  width: 100%;
+  max-width: 100%;
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 12px;
+  white-space: normal;
+  text-align: center;
+}
+
+.native-continue svg {
+  flex: 0 0 auto;
+}
+
 .bundle-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

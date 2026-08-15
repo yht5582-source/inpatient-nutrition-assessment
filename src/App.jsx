@@ -493,10 +493,45 @@ function AssessmentScreen({
   );
 }
 
-function ResultScreen({ context, recommendation, overrideTool, overrideReason, answers, setActiveStep, onFinish }) {
-  const result = normalizeResult(context, answers, recommendation, overrideTool);
+function formatCompletedAt(value) {
+  if (!value) return '未記錄';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('zh-TW', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  }).format(date);
+}
+
+export function createContinueNativeAssessmentHandler(setFocusNativeAssessment, navigateTo) {
+  return () => {
+    setFocusNativeAssessment(true);
+    navigateTo('assessment');
+  };
+}
+
+export function ResultScreen({
+  context,
+  recommendation,
+  overrideTool,
+  overrideReason,
+  answers,
+  toolAssessment,
+  onContinueNativeAssessment,
+  setActiveStep,
+  onFinish
+}) {
+  const selectedTool = overrideTool || recommendation.primaryTool;
+  const nativeEvaluation = evaluateToolAssessment(selectedTool, toolAssessment, context);
+  const result = normalizeResult(context, answers, recommendation, overrideTool, nativeEvaluation);
   const route = getRoute(context, answers, result);
   const referenceWeight = getReferenceWeight(context);
+  const nativeComplete = result.nativeStatus === 'COMPLETE';
+  const pendingNativeItems = new Set([...(result.missing || []), ...(result.invalid || [])]).size;
   return (
     <section className="screen result-screen">
       <Panel title="臨床摘要">
@@ -519,10 +554,41 @@ function ResultScreen({ context, recommendation, overrideTool, overrideReason, a
       <div className="wide-grid">
         <Panel title="原始評估結果">
           <Meta label="評估工具" value={result.tool} />
-          <Meta label="原始結果" value={getChineseStatus(result.native)} />
           <Meta label="評估領域" value={getChineseStatus(toolRegistry[result.tool].type)} />
-          <Meta label="結果狀態" value={getChineseStatus(result.assessmentStatus)} />
-          <Meta label="正規化說明" value="尚未完成經驗證量表的原始計分" />
+          {!nativeComplete && (
+            <div className="native-result-pending">
+              <Meta label="原始評估狀態" value={getChineseStatus(result.nativeStatus)} />
+              <Meta label="原始評估完成度" value={`${result.percent}%`} />
+              <Meta label="待完成項目" value={`${pendingNativeItems} 項`} />
+              <div className="progress native-result-progress">
+                <span style={{ width: `${result.percent}%` }} />
+              </div>
+              <p className="native-result-warning">原始量表尚未完成；不得以共同臨床資料推測量表分數</p>
+              <button
+                type="button"
+                className="primary-button native-continue"
+                onClick={onContinueNativeAssessment}
+              >
+                <ClipboardCheck size={17} />
+                繼續完成 {result.tool} 評估
+              </button>
+            </div>
+          )}
+          {nativeComplete && (
+            <div className="native-result-complete">
+              <Meta label="原始分數" value={result.nativeScore ?? '—'} />
+              <Meta label="原始分類" value={result.nativeCategory || '—'} />
+              <Meta label="評估方式" value={getChineseStatus(result.sourceMode)} />
+              <Meta label="完成日期／時間" value={formatCompletedAt(result.completedAt)} />
+              <Meta
+                label="正規化領域"
+                value={`營養風險：${getChineseStatus(result.nutritionRisk)}；營養不良：${getChineseStatus(result.malnutrition)}`}
+              />
+              {result.sourceMode === 'OFFICIAL_EXTERNAL' && (
+                <p className="native-result-note">官方結果回填；本站未重新計分</p>
+              )}
+            </div>
+          )}
         </Panel>
         <Panel title="結果判斷依據">
           <div className="reason-list vertical">
@@ -592,7 +658,12 @@ function ResultScreen({ context, recommendation, overrideTool, overrideReason, a
         <pre className="note-preview">{`營養評估摘要
 主要臨床路徑：${getChineseStatus(recommendation.primaryPathway)}
 評估工具：${result.tool}
-原始結果：${getChineseStatus(result.native)}
+原始評估狀態：${getChineseStatus(result.nativeStatus)}
+原始分數：${nativeComplete ? result.nativeScore : '未完成'}
+原始分類：${nativeComplete ? result.nativeCategory : '未完成'}
+來源模式：${getChineseStatus(result.sourceMode)}
+${nativeComplete ? `完成日期／時間：${formatCompletedAt(result.completedAt)}
+正規化領域：營養風險 ${getChineseStatus(result.nutritionRisk)}；營養不良 ${getChineseStatus(result.malnutrition)}` : '原始量表尚未完成；不得以共同臨床資料推測量表分數'}
 營養風險：${getChineseStatus(result.nutritionRisk)}
 營養不良狀態：${getChineseStatus(result.malnutrition)}
 處置優先度：${getChineseStatus(result.priority)}
@@ -819,6 +890,11 @@ export default function App() {
     setAnswers((currentAnswers) => ({ ...currentAnswers, [field]: value }));
   };
 
+  const continueNativeAssessment = createContinueNativeAssessmentHandler(
+    setFocusNativeAssessment,
+    navigateTo
+  );
+
   return (
     <div className="app-shell">
       <StepRail activeStep={activeStep} setActiveStep={navigateTo} canNavigate={canNavigate} />
@@ -842,7 +918,19 @@ export default function App() {
             setFocusNativeAssessment={setFocusNativeAssessment}
           />
         )}
-        {activeStep === 'result' && recommendation && <ResultScreen context={context} recommendation={recommendation} overrideTool={overrideTool} overrideReason={overrideReason} answers={answers} setActiveStep={navigateTo} onFinish={finishAssessment} />}
+        {activeStep === 'result' && recommendation && (
+          <ResultScreen
+            context={context}
+            recommendation={recommendation}
+            overrideTool={overrideTool}
+            overrideReason={overrideReason}
+            answers={answers}
+            toolAssessment={toolAssessments[overrideTool || recommendation.primaryTool]}
+            onContinueNativeAssessment={continueNativeAssessment}
+            setActiveStep={navigateTo}
+            onFinish={finishAssessment}
+          />
+        )}
       </div>
     </div>
   );
