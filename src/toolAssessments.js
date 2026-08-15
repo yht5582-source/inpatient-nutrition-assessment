@@ -211,8 +211,12 @@ export function scoreRfhNpt(answers = {}, context = {}) {
     const missing = ['weightLossPercent', 'acuteNoIntakeFiveDays']
       .filter((field) => !isRecorded(answers[field]));
     const invalid = [];
+    const weightLossPercent = toNumber(answers.weightLossPercent);
 
-    if (isRecorded(answers.weightLossPercent) && toNumber(answers.weightLossPercent) == null) {
+    if (
+      isRecorded(answers.weightLossPercent)
+      && (weightLossPercent == null || weightLossPercent < 0 || weightLossPercent > 100)
+    ) {
       invalid.push('weightLossPercent');
     }
     if (
@@ -232,9 +236,9 @@ export function scoreRfhNpt(answers = {}, context = {}) {
     const weightKg = toNumber(context.weight);
     const bmi = weightKg / (heightCm / 100) ** 2;
     const bmiPoints = bmi > 20 ? 0 : bmi >= 18.5 ? 1 : 2;
-    const weightLossPoints = toNumber(answers.weightLossPercent) < 5
+    const weightLossPoints = weightLossPercent < 5
       ? 0
-      : toNumber(answers.weightLossPercent) <= 10 ? 1 : 2;
+      : weightLossPercent <= 10 ? 1 : 2;
     const acutePoints = answers.acuteNoIntakeFiveDays === 'yes' ? 2 : 0;
     return completeRfhEvaluation(bmiPoints + weightLossPoints + acutePoints);
   }

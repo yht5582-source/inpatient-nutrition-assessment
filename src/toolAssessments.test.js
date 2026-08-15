@@ -376,6 +376,41 @@ describe('RFH-NPT', () => {
     assert.equal(scoreRfhNpt({ ...answers, weightLossPercent: '10.1' }, { height: 100, weight: 20.1 }).nativeScore, 2);
   });
 
+  test('accepts RFH weight-loss percentage boundaries 0 and 100', () => {
+    const answers = {
+      alcoholicHepatitis: 'no', tubeFeeding: 'no', fluidOverload: 'no',
+      acuteNoIntakeFiveDays: 'no'
+    };
+
+    for (const weightLossPercent of ['0', '100']) {
+      const result = scoreRfhNpt(
+        { ...answers, weightLossPercent },
+        { height: 170, weight: 70 }
+      );
+
+      assert.equal(result.nativeStatus, 'COMPLETE', weightLossPercent);
+      assert.notEqual(result.nativeScore, null, weightLossPercent);
+    }
+  });
+
+  test('rejects RFH weight-loss percentages outside 0 to 100', () => {
+    const answers = {
+      alcoholicHepatitis: 'no', tubeFeeding: 'no', fluidOverload: 'no',
+      acuteNoIntakeFiveDays: 'no'
+    };
+
+    for (const weightLossPercent of ['-1', '101']) {
+      const result = scoreRfhNpt(
+        { ...answers, weightLossPercent },
+        { height: 170, weight: 70 }
+      );
+
+      assert.equal(result.nativeStatus, 'IN_PROGRESS', weightLossPercent);
+      assert.equal(result.nativeScore, null, weightLossPercent);
+      assert.deepEqual(result.invalid, ['weightLossPercent'], weightLossPercent);
+    }
+  });
+
   test('requires positive height and weight for the no-fluid-overload BMI path', () => {
     const answers = {
       alcoholicHepatitis: 'no', tubeFeeding: 'no', fluidOverload: 'no',

@@ -14,10 +14,10 @@ const nrsNutritionOptions = [
 ];
 
 const nrsDiseaseOptions = [
-  { value: '0', label: '0 — 正常營養需求' },
-  { value: '1', label: '1 — 髖部骨折，或慢性病急性併發症' },
-  { value: '2', label: '2 — 重大腹部手術、中風、重症肺炎或血液惡性腫瘤' },
-  { value: '3', label: '3 — 頭部外傷、骨髓移植或加護病房 APACHE II >10' }
+  { value: '0', label: '0 分：正常營養需求' },
+  { value: '1', label: '1 分：髖部骨折；慢性病急性併發症（肝硬化、COPD、慢性血液透析、糖尿病、腫瘤）' },
+  { value: '2', label: '2 分：重大腹部手術、中風、嚴重肺炎、血液惡性腫瘤' },
+  { value: '3', label: '3 分：頭部外傷、骨髓移植、加護病房病人（APACHE II >10）' }
 ];
 
 const sevenPointFields = [
@@ -283,7 +283,7 @@ function Nrs2002Fields({ context, assessment, onChange }) {
     { name: 'initialBmiLow', label: 'BMI 是否低於 20.5？' },
     { name: 'initialWeightLoss', label: '過去 3 個月是否有體重下降？' },
     { name: 'initialReducedIntake', label: '過去一週是否有攝取量減少？' },
-    { name: 'initialSevereIllness', label: '病人是否為重症或代謝需求明顯增加？' }
+    { name: 'initialSevereIllness', label: '病人是否病情嚴重？（例如：接受加護治療）' }
   ];
   const positiveScreen = initialFields.some(({ name }) => assessment.answers[name] === 'yes');
   const age = context.age === '' ? '—' : `${context.age} 歲`;
