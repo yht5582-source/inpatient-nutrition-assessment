@@ -2,6 +2,7 @@ node_modules/
 dist/
 output/
 .pnpm-store/
+.worktrees/
 AGENTS.md
 sources/
 .DS_Store
