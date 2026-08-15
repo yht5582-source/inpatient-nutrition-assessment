@@ -13,6 +13,112 @@ export const TOOL_ASSESSMENT_MODES = Object.freeze({
   mNUTRIC: ASSESSMENT_MODES.IN_APP_AUTOSCORE
 });
 
+const NRS_INITIAL_FIELDS = [
+  'initialBmiLow',
+  'initialWeightLoss',
+  'initialReducedIntake',
+  'initialSevereIllness'
+];
+
+const NRS_FINAL_FIELDS = ['nutritionScore', 'diseaseScore'];
+const MNUTRIC_FIELDS = ['apacheIi', 'sofa', 'comorbidities', 'preIcuDays'];
+
+function isRecorded(value) {
+  return value !== '' && value != null;
+}
+
+function toNumber(value) {
+  if (typeof value === 'string' && value.trim() === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function toIntegerInRange(value, minimum, maximum = Infinity) {
+  const number = toNumber(value);
+  return number != null && Number.isInteger(number) && number >= minimum && number <= maximum
+    ? number
+    : null;
+}
+
+function incompleteEvaluation(missing = [], invalid = []) {
+  const result = {
+    nativeStatus: 'IN_PROGRESS',
+    nativeScore: null,
+    nativeCategory: '',
+    missing,
+    normalizedNutritionRisk: 'NOT_ASSESSED',
+    normalizedMalnutrition: 'NOT_APPLICABLE'
+  };
+
+  if (invalid.length > 0) result.invalid = invalid;
+  return result;
+}
+
+function completeEvaluation(nativeScore, nativeCategory, normalizedNutritionRisk) {
+  return {
+    nativeStatus: 'COMPLETE',
+    nativeScore,
+    nativeCategory,
+    missing: [],
+    normalizedNutritionRisk,
+    normalizedMalnutrition: 'NOT_APPLICABLE'
+  };
+}
+
+export function scoreNrs2002(answers = {}, context = {}) {
+  const missingInitial = NRS_INITIAL_FIELDS.filter((field) => !isRecorded(answers[field]));
+  if (missingInitial.length > 0) return incompleteEvaluation(missingInitial);
+
+  const invalidInitial = NRS_INITIAL_FIELDS.filter(
+    (field) => answers[field] !== 'yes' && answers[field] !== 'no'
+  );
+  if (invalidInitial.length > 0) return incompleteEvaluation([], invalidInitial);
+
+  if (NRS_INITIAL_FIELDS.every((field) => answers[field] === 'no')) {
+    return completeEvaluation(0, '初篩陰性；建議每週重篩', 'LOW');
+  }
+
+  const missingFinal = NRS_FINAL_FIELDS.filter((field) => !isRecorded(answers[field]));
+  if (missingFinal.length > 0) return incompleteEvaluation(missingFinal);
+
+  const invalidFinal = NRS_FINAL_FIELDS.filter(
+    (field) => toIntegerInRange(answers[field], 0, 3) == null
+  );
+  if (invalidFinal.length > 0) return incompleteEvaluation([], invalidFinal);
+
+  const agePoint = Number(context.age) >= 70 ? 1 : 0;
+  const nativeScore = Number(answers.nutritionScore) + Number(answers.diseaseScore) + agePoint;
+  return completeEvaluation(nativeScore, nativeScore < 3 ? '無營養風險' : '有營養風險', nativeScore < 3 ? 'LOW' : 'AT_RISK');
+}
+
+export function scoreMNutric(answers = {}, context = {}) {
+  const missing = MNUTRIC_FIELDS.filter((field) => !isRecorded(answers[field]));
+  if (missing.length > 0) return incompleteEvaluation(missing);
+
+  const invalid = [];
+  const apache = toIntegerInRange(answers.apacheIi, 0, 71);
+  const sofa = toIntegerInRange(answers.sofa, 0, 24);
+  const comorbidities = toIntegerInRange(answers.comorbidities, 0);
+  const preIcuDays = toNumber(answers.preIcuDays);
+
+  if (apache == null) invalid.push('apacheIi');
+  if (sofa == null) invalid.push('sofa');
+  if (comorbidities == null) invalid.push('comorbidities');
+  if (preIcuDays == null || preIcuDays < 0) invalid.push('preIcuDays');
+  if (invalid.length > 0) return incompleteEvaluation([], invalid);
+
+  const age = Number(context.age);
+  const agePoints = age < 50 ? 0 : age < 75 ? 1 : 2;
+  const apachePoints = apache < 15 ? 0 : apache < 20 ? 1 : apache <= 28 ? 2 : 3;
+  const sofaPoints = sofa < 6 ? 0 : sofa < 10 ? 1 : 2;
+  const comorbidityPoints = comorbidities < 2 ? 0 : 1;
+  const preIcuPoints = preIcuDays < 1 ? 0 : 1;
+  const nativeScore = agePoints + apachePoints + sofaPoints + comorbidityPoints + preIcuPoints;
+  const highRisk = nativeScore >= 5;
+
+  return completeEvaluation(nativeScore, highRisk ? '高分' : '低分', highRisk ? 'HIGH' : 'LOW');
+}
+
 export function createEmptyToolAssessment(toolId) {
   return {
     answers: {},
