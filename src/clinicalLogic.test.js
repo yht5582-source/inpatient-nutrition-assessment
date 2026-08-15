@@ -255,18 +255,6 @@ describe('normalization boundaries', () => {
     assert.equal(result.assessmentStatus, 'INCOMPLETE');
   });
 
-  test('does not generate a native result for a tool pending license review', () => {
-    const result = normalizeResult(
-      baseContext,
-      completeAnswers,
-      getRecommendation(baseContext),
-      'MNA-SF'
-    );
-
-    assert.equal(result.native, 'Tool unavailable pending license review');
-    assert.equal(result.nutritionRisk, 'UNKNOWN');
-    assert.equal(result.assessmentStatus, 'NOT_AVAILABLE');
-  });
 });
 
 describe('feeding route safety gate', () => {

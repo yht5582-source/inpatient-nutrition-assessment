@@ -136,38 +136,50 @@ export const toolRegistry = {
   'NRS-2002': {
     type: 'Nutrition screening',
     population: 'General adult inpatient',
-    version: 'V1 hospital-approved',
-    licenseStatus: 'APPROVED'
+    version: 'NRS-2002 (ESPEN)',
+    assessmentMode: 'IN_APP_AUTOSCORE',
+    modeLabel: '站內自動計分',
+    sourceUrl: 'https://www.espen.org/documents/Screening.pdf'
   },
   'MNA-SF': {
     type: 'Geriatric screening',
     population: 'Age >=65',
-    version: 'License review required',
-    licenseStatus: 'PENDING_REVIEW'
+    version: 'MNA-SF official form',
+    assessmentMode: 'OFFICIAL_EXTERNAL',
+    modeLabel: '官方工具結果回填',
+    sourceUrl: 'https://www.mna-elderly.com/mna-forms'
   },
   '7-point SGA': {
     type: 'Nutrition assessment',
     population: 'CKD5D / dialysis',
-    version: 'V1 hospital-approved',
-    licenseStatus: 'APPROVED'
+    version: '7-point SGA (NKF)',
+    assessmentMode: 'CLINICIAN_RATED',
+    modeLabel: '營養師整體評定',
+    sourceUrl: 'https://www.kidney.org/sites/default/files/12-85-0946_ica_crn-pocket-guide_v6_chp_1.pdf'
   },
   'RFH-NPT': {
     type: 'Liver nutrition risk',
     population: 'Cirrhosis',
-    version: 'License review required',
-    licenseStatus: 'PENDING_REVIEW'
+    version: 'RFH-NPT',
+    assessmentMode: 'IN_APP_AUTOSCORE',
+    modeLabel: '站內自動計分',
+    sourceUrl: 'https://www.frontiersin.org/journals/nutrition/articles/10.3389/fnut.2021.766350/full'
   },
   'PG-SGA SF': {
     type: 'Oncology triage',
     population: 'Active cancer',
-    version: 'License review required',
-    licenseStatus: 'PENDING_REVIEW'
+    version: 'PG-SGA SF / Pt-Global',
+    assessmentMode: 'OFFICIAL_EXTERNAL',
+    modeLabel: '官方工具結果回填',
+    sourceUrl: 'https://pt-global.org/pt-global-app/'
   },
   mNUTRIC: {
     type: 'ICU nutrition risk',
     population: 'Critical care',
-    version: 'V1 hospital-approved',
-    licenseStatus: 'APPROVED'
+    version: 'mNUTRIC without IL-6 (0-9)',
+    assessmentMode: 'IN_APP_AUTOSCORE',
+    modeLabel: '站內自動計分',
+    sourceUrl: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC5842932/'
   }
 };
 
@@ -294,7 +306,8 @@ export function getRecommendation(context) {
     .map(([key, value]) => ({
       tool: value.tool,
       use: value.reason,
-      judgment: toolRegistry[value.tool].licenseStatus === 'APPROVED' ? (key === 'GENERAL' ? '後續使用' : '可追加') : '待授權審查'
+      judgment: toolRegistry[value.tool].modeLabel,
+      nextStep: '完成共同與原始評估'
     }));
 
   return {
@@ -308,7 +321,7 @@ export function getRecommendation(context) {
     ],
     modifiers,
     alternatives,
-    nextStep: toolRegistry[meta.tool].licenseStatus === 'APPROVED' ? '蒐集共同評估資料' : '選擇院內已核准工具'
+    nextStep: '完成共同與原始評估'
   };
 }
 
@@ -362,20 +375,6 @@ export function normalizeResult(context, answers, recommendation, overrideTool) 
       dataQualityFlags,
       reasons: ['Required assessment fields are missing', ...safetyFlags, ...dataQualityFlags],
       assessmentStatus: 'INCOMPLETE'
-    };
-  }
-
-  if (!tool || toolRegistry[tool]?.licenseStatus !== 'APPROVED') {
-    return {
-      tool,
-      native: 'Tool unavailable pending license review',
-      nutritionRisk: 'UNKNOWN',
-      malnutrition: 'NOT_ASSESSED',
-      priority: safetyFlags.includes('Refeeding risk') ? 'RED' : 'GRAY',
-      safetyFlags,
-      dataQualityFlags,
-      reasons: ['Validated digital scoring is not available', ...safetyFlags, ...dataQualityFlags],
-      assessmentStatus: 'NOT_AVAILABLE'
     };
   }
 
