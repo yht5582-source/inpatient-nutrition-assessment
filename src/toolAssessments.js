@@ -24,6 +24,17 @@ const NRS_FINAL_FIELDS = ['nutritionScore', 'diseaseScore'];
 const MNUTRIC_FIELDS = ['apacheIi', 'sofa', 'comorbidities', 'preIcuDays'];
 const RFH_INITIAL_FIELDS = ['alcoholicHepatitis', 'tubeFeeding'];
 const RFH_FLUID_FIELDS = ['incompleteMealsFromFluid', 'intakeReducedFifty', 'fluidWeightLoss'];
+const SEVEN_POINT_SGA_FIELDS = [
+  'weightChange',
+  'intakeChange',
+  'giSymptoms',
+  'functionalCapacity',
+  'diseaseBurden',
+  'subcutaneousFat',
+  'muscleWasting',
+  'overallScore'
+];
+const OFFICIAL_EXTERNAL_FIELDS = ['officialScore', 'officialCategory', 'completedDate', 'confirmed'];
 
 function isRecorded(value) {
   return value !== '' && value != null;
@@ -71,6 +82,18 @@ function completeEvaluation(nativeScore, nativeCategory, normalizedNutritionRisk
     missing: [],
     normalizedNutritionRisk,
     normalizedMalnutrition: 'NOT_APPLICABLE'
+  };
+}
+
+function completeEvaluationWithMalnutrition(
+  nativeScore,
+  nativeCategory,
+  normalizedNutritionRisk,
+  normalizedMalnutrition
+) {
+  return {
+    ...completeEvaluation(nativeScore, nativeCategory, normalizedNutritionRisk),
+    normalizedMalnutrition
   };
 }
 
@@ -239,6 +262,93 @@ export function scoreRfhNpt(answers = {}, context = {}) {
   const fluidPoints = 1;
   const intakePoints = answers.intakeReducedFifty === 'yes' ? 2 : 0;
   return completeRfhEvaluation(fluidPoints + mealPoints + intakePoints + weightPoints);
+}
+
+export function scoreSevenPointSga(answers = {}) {
+  const missing = SEVEN_POINT_SGA_FIELDS.filter((field) => !isRecorded(answers[field]));
+  if (missing.length > 0) return incompleteEvaluation(missing);
+
+  const overallScore = toIntegerInRange(answers.overallScore, 1, 7);
+  if (overallScore == null) return incompleteEvaluation([], ['overallScore']);
+
+  if (overallScore <= 2) {
+    return completeEvaluationWithMalnutrition(
+      overallScore,
+      '嚴重營養不良',
+      'NOT_APPLICABLE',
+      'SEVERE'
+    );
+  }
+  if (overallScore <= 5) {
+    return completeEvaluationWithMalnutrition(
+      overallScore,
+      '輕至中度營養不良',
+      'NOT_APPLICABLE',
+      'MODERATE'
+    );
+  }
+  return completeEvaluationWithMalnutrition(
+    overallScore,
+    '營養良好',
+    'NOT_APPLICABLE',
+    'NO_MALNUTRITION'
+  );
+}
+
+function classifyMnaSf(score) {
+  if (score <= 7) {
+    return {
+      category: '營養不良',
+      normalizedNutritionRisk: 'AT_RISK',
+      normalizedMalnutrition: 'MALNOURISHED'
+    };
+  }
+  if (score <= 11) {
+    return {
+      category: '有營養不良風險',
+      normalizedNutritionRisk: 'AT_RISK',
+      normalizedMalnutrition: 'UNKNOWN'
+    };
+  }
+  return {
+    category: '營養正常',
+    normalizedNutritionRisk: 'LOW',
+    normalizedMalnutrition: 'NO_MALNUTRITION'
+  };
+}
+
+function classifyPgSgaSf(score) {
+  if (score <= 1) return { category: '0–1 分', normalizedNutritionRisk: 'LOW' };
+  if (score <= 3) return { category: '2–3 分', normalizedNutritionRisk: 'LOW' };
+  if (score <= 8) return { category: '4–8 分', normalizedNutritionRisk: 'AT_RISK' };
+  return { category: '9 分以上', normalizedNutritionRisk: 'HIGH' };
+}
+
+export function scoreOfficialExternal(toolId, answers = {}) {
+  const missing = OFFICIAL_EXTERNAL_FIELDS.filter((field) => !isRecorded(answers[field]));
+  if (missing.length > 0) return incompleteEvaluation(missing);
+
+  if (answers.confirmed !== true) return incompleteEvaluation([], ['confirmed']);
+
+  const maximumScore = toolId === 'MNA-SF' ? 14 : toolId === 'PG-SGA SF' ? 36 : null;
+  const officialScore = maximumScore == null
+    ? null
+    : toIntegerInRange(answers.officialScore, 0, maximumScore);
+  if (officialScore == null) return incompleteEvaluation([], [maximumScore == null ? 'toolId' : 'officialScore']);
+
+  const classification = toolId === 'MNA-SF'
+    ? classifyMnaSf(officialScore)
+    : classifyPgSgaSf(officialScore);
+  if (answers.officialCategory !== classification.category) {
+    return incompleteEvaluation([], ['officialCategory']);
+  }
+
+  return completeEvaluationWithMalnutrition(
+    officialScore,
+    classification.category,
+    classification.normalizedNutritionRisk,
+    classification.normalizedMalnutrition || 'NOT_APPLICABLE'
+  );
 }
 
 export function createEmptyToolAssessment(toolId) {

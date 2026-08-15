@@ -6,7 +6,9 @@ import {
   createInitialToolAssessments,
   scoreMNutric,
   scoreNrs2002,
+  scoreOfficialExternal,
   scoreRfhNpt,
+  scoreSevenPointSga,
   updateToolAssessment
 } from './toolAssessments.js';
 
@@ -250,5 +252,185 @@ describe('RFH-NPT', () => {
 
     assert.equal(result.nativeStatus, 'IN_PROGRESS');
     assert.deepEqual(result.missing, ['fluidWeightLoss']);
+  });
+});
+
+const completeSgaObservations = {
+  weightChange: 'stable',
+  intakeChange: 'none',
+  giSymptoms: 'none',
+  functionalCapacity: 'normal',
+  diseaseBurden: 'low',
+  subcutaneousFat: 'normal',
+  muscleWasting: 'normal'
+};
+
+describe('7-point SGA', () => {
+  for (const field of [...Object.keys(completeSgaObservations), 'overallScore']) {
+    test(`requires the ${field} observation before a clinician rating can complete`, () => {
+      const result = scoreSevenPointSga({
+        ...completeSgaObservations,
+        overallScore: '6',
+        [field]: ''
+      });
+
+      assert.equal(result.nativeStatus, 'IN_PROGRESS');
+      assert.deepEqual(result.missing, [field]);
+    });
+  }
+
+  for (const [score, category, normalized] of [
+    [1, '嚴重營養不良', 'SEVERE'],
+    [2, '嚴重營養不良', 'SEVERE'],
+    [3, '輕至中度營養不良', 'MODERATE'],
+    [4, '輕至中度營養不良', 'MODERATE'],
+    [5, '輕至中度營養不良', 'MODERATE'],
+    [6, '營養良好', 'NO_MALNUTRITION'],
+    [7, '營養良好', 'NO_MALNUTRITION']
+  ]) {
+    test(`maps clinician-rated SGA score ${score} without summing observations`, () => {
+      const result = scoreSevenPointSga({ ...completeSgaObservations, overallScore: String(score) });
+
+      assert.equal(result.nativeStatus, 'COMPLETE');
+      assert.equal(result.nativeScore, score);
+      assert.equal(result.nativeCategory, category);
+      assert.equal(result.normalizedMalnutrition, normalized);
+      assert.equal(result.normalizedNutritionRisk, 'NOT_APPLICABLE');
+    });
+  }
+
+  test('rejects an out-of-range, fractional, or boolean clinician rating', () => {
+    for (const overallScore of ['0', '8', '4.5', false]) {
+      const result = scoreSevenPointSga({ ...completeSgaObservations, overallScore });
+
+      assert.equal(result.nativeStatus, 'IN_PROGRESS');
+      assert.deepEqual(result.invalid, ['overallScore']);
+    }
+  });
+});
+
+describe('official external result entry', () => {
+  test('keeps an external score in progress until official completion is confirmed', () => {
+    const result = scoreOfficialExternal('MNA-SF', {
+      officialScore: '10', officialCategory: '有營養不良風險', completedDate: '2026-08-15', confirmed: false
+    });
+
+    assert.equal(result.nativeStatus, 'IN_PROGRESS');
+    assert.equal(result.nativeScore, null);
+    assert.deepEqual(result.invalid, ['confirmed']);
+  });
+
+  test('requires the official score, category, completion date, and confirmation', () => {
+    for (const field of ['officialScore', 'officialCategory', 'completedDate', 'confirmed']) {
+      const result = scoreOfficialExternal('MNA-SF', {
+        officialScore: '10',
+        officialCategory: '有營養不良風險',
+        completedDate: '2026-08-15',
+        confirmed: true,
+        [field]: ''
+      });
+
+      assert.equal(result.nativeStatus, 'IN_PROGRESS');
+      assert.deepEqual(result.missing, [field]);
+    }
+  });
+
+  for (const [score, category, risk, malnutrition] of [
+    [0, '營養不良', 'AT_RISK', 'MALNOURISHED'],
+    [7, '營養不良', 'AT_RISK', 'MALNOURISHED'],
+    [8, '有營養不良風險', 'AT_RISK', 'UNKNOWN'],
+    [11, '有營養不良風險', 'AT_RISK', 'UNKNOWN'],
+    [12, '營養正常', 'LOW', 'NO_MALNUTRITION'],
+    [14, '營養正常', 'LOW', 'NO_MALNUTRITION']
+  ]) {
+    test(`validates MNA-SF score ${score} against the official category`, () => {
+      const result = scoreOfficialExternal('MNA-SF', {
+        officialScore: String(score), officialCategory: category, confirmed: true, completedDate: '2026-08-15'
+      });
+
+      assert.equal(result.nativeStatus, 'COMPLETE');
+      assert.equal(result.nativeScore, score);
+      assert.equal(result.nativeCategory, category);
+      assert.equal(result.normalizedNutritionRisk, risk);
+      assert.equal(result.normalizedMalnutrition, malnutrition);
+    });
+  }
+
+  for (const [score, category] of [
+    [0, '營養正常'],
+    [8, '營養不良'],
+    [12, '有營養不良風險']
+  ]) {
+    test(`rejects an MNA-SF score ${score} whose official category does not match`, () => {
+      const result = scoreOfficialExternal('MNA-SF', {
+        officialScore: String(score), officialCategory: category, confirmed: true, completedDate: '2026-08-15'
+      });
+
+      assert.equal(result.nativeStatus, 'IN_PROGRESS');
+      assert.equal(result.nativeScore, null);
+      assert.deepEqual(result.invalid, ['officialCategory']);
+    });
+  }
+
+  test('rejects out-of-range, fractional, and boolean MNA-SF scores', () => {
+    for (const officialScore of ['-1', '15', '8.5', false]) {
+      const result = scoreOfficialExternal('MNA-SF', {
+        officialScore, officialCategory: '有營養不良風險', confirmed: true, completedDate: '2026-08-15'
+      });
+
+      assert.equal(result.nativeStatus, 'IN_PROGRESS');
+      assert.deepEqual(result.invalid, ['officialScore']);
+    }
+  });
+
+  for (const [score, category, risk] of [
+    [0, '0–1 分', 'LOW'],
+    [1, '0–1 分', 'LOW'],
+    [2, '2–3 分', 'LOW'],
+    [3, '2–3 分', 'LOW'],
+    [4, '4–8 分', 'AT_RISK'],
+    [8, '4–8 分', 'AT_RISK'],
+    [9, '9 分以上', 'HIGH'],
+    [36, '9 分以上', 'HIGH']
+  ]) {
+    test(`validates PG-SGA SF score ${score} against its official triage band`, () => {
+      const result = scoreOfficialExternal('PG-SGA SF', {
+        officialScore: String(score), officialCategory: category, confirmed: true, completedDate: '2026-08-15'
+      });
+
+      assert.equal(result.nativeStatus, 'COMPLETE');
+      assert.equal(result.nativeScore, score);
+      assert.equal(result.nativeCategory, category);
+      assert.equal(result.normalizedNutritionRisk, risk);
+      assert.equal(result.normalizedMalnutrition, 'NOT_APPLICABLE');
+    });
+  }
+
+  for (const [score, category] of [
+    [1, '2–3 分'],
+    [3, '4–8 分'],
+    [8, '9 分以上'],
+    [9, '0–1 分']
+  ]) {
+    test(`rejects PG-SGA SF score ${score} with a mismatched triage band`, () => {
+      const result = scoreOfficialExternal('PG-SGA SF', {
+        officialScore: String(score), officialCategory: category, confirmed: true, completedDate: '2026-08-15'
+      });
+
+      assert.equal(result.nativeStatus, 'IN_PROGRESS');
+      assert.equal(result.nativeScore, null);
+      assert.deepEqual(result.invalid, ['officialCategory']);
+    });
+  }
+
+  test('rejects out-of-range, fractional, and boolean PG-SGA SF scores', () => {
+    for (const officialScore of ['-1', '37', '8.5', false]) {
+      const result = scoreOfficialExternal('PG-SGA SF', {
+        officialScore, officialCategory: '4–8 分', confirmed: true, completedDate: '2026-08-15'
+      });
+
+      assert.equal(result.nativeStatus, 'IN_PROGRESS');
+      assert.deepEqual(result.invalid, ['officialScore']);
+    }
   });
 });
