@@ -374,7 +374,7 @@ function HomeScreen({ setActiveStep, context, setContext }) {
   );
 }
 
-function ContextScreen({ context, setContext, recommendation, setActiveStep }) {
+function ContextScreen({ context, setContext, recommendation, setActiveStep, syncAssessmentField }) {
   const updatePathway = (key) => {
     setContext({ ...context, pathways: { ...context.pathways, [key]: !context.pathways[key] } });
   };
@@ -396,9 +396,9 @@ function ContextScreen({ context, setContext, recommendation, setActiveStep }) {
           </div>
           <div className="select-row">
             <Select label="飲食狀態" value="軟質飲食" options={['一般飲食', '軟質飲食', 'NPO', '管灌']} />
-            <Select label="進食情形" value={context.intake} options={['>=75%', '50-74%', '25-49%', '<25% 或幾乎無攝取']} onChange={(value) => setContext({ ...context, intake: value })} />
-            <Select label="GI tract" value={context.giFunction} options={['functional', 'partially functional', 'uncertain', 'unavailable']} onChange={(value) => setContext({ ...context, giFunction: value })} />
-            <Select label="Oral safety" value={context.oralSafety} options={['safe', 'suspected dysphagia', 'unsafe', 'not assessed']} onChange={(value) => setContext({ ...context, oralSafety: value })} />
+            <Select label="進食情形" value={context.intake} options={['>=75%', '50-74%', '25-49%', '<25% 或幾乎無攝取']} onChange={(value) => syncAssessmentField('intake', value)} />
+            <Select label="GI tract" value={context.giFunction} options={['functional', 'partially functional', 'uncertain', 'unavailable']} onChange={(value) => syncAssessmentField('gi', value)} />
+            <Select label="Oral safety" value={context.oralSafety} options={['safe', 'suspected dysphagia', 'unsafe', 'not assessed']} onChange={(value) => syncAssessmentField('swallow', value)} />
           </div>
         </Panel>
 
@@ -517,7 +517,16 @@ function ToolScreen({ recommendation, overrideTool, setOverrideTool, setActiveSt
   );
 }
 
-function AssessmentScreen({ context, recommendation, overrideTool, answers, setAnswers, setActiveStep }) {
+function AssessmentScreen({ context, recommendation, overrideTool, answers, setAnswers, setActiveStep, syncAssessmentField }) {
+  const updateAnswer = (questionId, value) => {
+    if (['intake', 'gi', 'swallow'].includes(questionId)) {
+      syncAssessmentField(questionId, value);
+      return;
+    }
+
+    setAnswers({ ...answers, [questionId]: value });
+  };
+
   return (
     <section className="screen grid-screen">
       <main className="main-stack">
@@ -532,7 +541,7 @@ function AssessmentScreen({ context, recommendation, overrideTool, answers, setA
                     <button
                       key={option}
                       className={cx('option', answers[question.id] === option && 'active')}
-                      onClick={() => setAnswers({ ...answers, [question.id]: option })}
+                      onClick={() => updateAnswer(question.id, option)}
                     >
                       {option}
                     </button>
@@ -809,9 +818,20 @@ export default function App() {
     weightLoss: '是，明顯',
     muscleLoss: '中度',
     gi: initialContext.giFunction,
-    swallow: 'suspected dysphagia'
+    swallow: initialContext.oralSafety
   });
   const recommendation = useMemo(() => getRecommendation(context), [context]);
+
+  const syncAssessmentField = (field, value) => {
+    const contextKey = {
+      intake: 'intake',
+      gi: 'giFunction',
+      swallow: 'oralSafety'
+    }[field];
+
+    setContext((currentContext) => ({ ...currentContext, [contextKey]: value }));
+    setAnswers((currentAnswers) => ({ ...currentAnswers, [field]: value }));
+  };
 
   return (
     <div className="app-shell">
@@ -819,10 +839,18 @@ export default function App() {
       <div className="workspace">
         <TopBar context={context} setContext={setContext} />
         {activeStep === 'home' && <HomeScreen setActiveStep={setActiveStep} context={context} setContext={setContext} />}
-        {activeStep === 'context' && <ContextScreen context={context} setContext={setContext} recommendation={recommendation} setActiveStep={setActiveStep} />}
+        {activeStep === 'context' && <ContextScreen context={context} setContext={setContext} recommendation={recommendation} setActiveStep={setActiveStep} syncAssessmentField={syncAssessmentField} />}
         {activeStep === 'tool' && <ToolScreen recommendation={recommendation} overrideTool={overrideTool} setOverrideTool={setOverrideTool} setActiveStep={setActiveStep} />}
         {activeStep === 'assessment' && (
-          <AssessmentScreen context={context} recommendation={recommendation} overrideTool={overrideTool} answers={answers} setAnswers={setAnswers} setActiveStep={setActiveStep} />
+          <AssessmentScreen
+            context={context}
+            recommendation={recommendation}
+            overrideTool={overrideTool}
+            answers={answers}
+            setAnswers={setAnswers}
+            setActiveStep={setActiveStep}
+            syncAssessmentField={syncAssessmentField}
+          />
         )}
         {activeStep === 'result' && <ResultScreen context={context} recommendation={recommendation} overrideTool={overrideTool} answers={answers} setActiveStep={setActiveStep} />}
       </div>
