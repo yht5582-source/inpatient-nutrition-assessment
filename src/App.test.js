@@ -3,8 +3,10 @@ import { after, before, describe, test } from 'node:test';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createServer } from 'vite';
+import { createInitialSwallowingAssessments } from './swallowingAssessments.js';
 
 let appModule;
+let swallowingFormModule;
 let vite;
 
 const context = {
@@ -75,13 +77,77 @@ function renderResult(toolAssessment, overrides = {}) {
   }));
 }
 
+function renderSwallowingForm(store) {
+  return renderToStaticMarkup(React.createElement(swallowingFormModule.default, {
+    store,
+    defaultRole: '營養師',
+    onChange: () => {}
+  }));
+}
+
 before(async () => {
-  vite = await createServer({ server: { middlewareMode: true }, appType: 'custom' });
+  vite = await createServer({
+    server: { middlewareMode: true, hmr: { port: 0 } },
+    optimizeDeps: { noDiscovery: true },
+    appType: 'custom'
+  });
   appModule = await vite.ssrLoadModule('/src/App.jsx');
+  swallowingFormModule = await vite.ssrLoadModule('/src/SwallowingAssessmentForm.jsx');
 });
 
 after(async () => {
   await vite?.close();
+});
+
+describe('optional swallowing assessment UI', () => {
+  test('offers both screens as independent multi-select choices', () => {
+    const html = renderSwallowingForm(createInitialSwallowingAssessments());
+
+    assert.match(html, /臺灣版古金吞嚥篩檢量表/);
+    assert.match(html, /30 秒反覆唾液吞嚥測試/);
+    assert.match(html, /可複選/);
+    assert.match(html, /醫師/);
+    assert.match(html, /護理師/);
+    assert.match(html, /營養師/);
+  });
+
+  test('unlocks only the next GUSS-T stage after a full indirect score', () => {
+    const store = {
+      ...createInitialSwallowingAssessments(),
+      selectedTools: ['GUSS-T'],
+      assessorRole: '護理師',
+      'GUSS-T': {
+        answers: {
+          indirect: {
+            alertness: 'yes',
+            voluntaryCough: 'yes',
+            salivaSwallow: 'yes',
+            drooling: 'no',
+            voiceChange: 'no'
+          }
+        }
+      }
+    };
+    const html = renderSwallowingForm(store);
+
+    assert.match(html, /半固體分測驗/);
+    assert.match(html, /液體分測驗.*尚未開放/s);
+    assert.doesNotMatch(html, /液體 3、5、10、20、50 mL/);
+  });
+
+  test('shows the RSST threshold result without treating it as a diagnosis', () => {
+    const store = {
+      ...createInitialSwallowingAssessments(),
+      selectedTools: ['RSST'],
+      assessorRole: '醫師',
+      RSST: { answers: { swallowCount: 2 }, completedAt: '2026-08-22T03:04:05.000Z' }
+    };
+    const html = renderSwallowingForm(store);
+
+    assert.match(html, /篩檢陽性：疑似吞嚥障礙/);
+    assert.match(html, /不能取代臨床吞嚥評估/);
+    assert.match(html, /30 秒倒數/);
+  });
 });
 
 describe('ResultScreen native assessment presentation', () => {
@@ -154,6 +220,57 @@ describe('ResultScreen native assessment presentation', () => {
     assert.match(html, /完成日期：2026-08-15/);
     assert.doesNotMatch(html, /完成日期／時間/);
     assert.doesNotMatch(html, /完成日期(?:<\/span><strong>|：)[^<\n]*\d{1,2}:\d{2}/);
+  });
+
+  test('documents independently selected GUSS-T and RSST results with the assessor role', () => {
+    const swallowingAssessments = {
+      ...createInitialSwallowingAssessments(),
+      selectedTools: ['GUSS-T', 'RSST'],
+      assessorRole: '護理師',
+      'GUSS-T': {
+        answers: {
+          indirect: {
+            alertness: 'yes',
+            voluntaryCough: 'yes',
+            salivaSwallow: 'yes',
+            drooling: 'no',
+            voiceChange: 'no'
+          },
+          semisolid: {
+            swallow: 'delayed',
+            involuntaryCough: 'no',
+            drooling: 'no',
+            voiceChange: 'no'
+          }
+        },
+        completedAt: '2026-08-22T03:04:05.000Z'
+      },
+      RSST: {
+        answers: { swallowCount: 4 },
+        completedAt: '2026-08-22T03:05:05.000Z'
+      }
+    };
+    const html = renderResult({
+      answers: {
+        initialBmiLow: 'no',
+        initialWeightLoss: 'no',
+        initialReducedIntake: 'no',
+        initialSevereIllness: 'no'
+      },
+      nativeStatus: 'COMPLETE',
+      nativeScore: 0,
+      nativeCategory: '初篩陰性；建議每週重篩',
+      completedAt: '2026-08-22T03:00:00.000Z',
+      sourceMode: 'IN_APP_AUTOSCORE'
+    }, { swallowingAssessments });
+
+    assert.match(html, /吞嚥篩檢結果/);
+    assert.match(html, /施測者角色.*護理師/s);
+    assert.match(html, /GUSS-T.*9 分/s);
+    assert.match(html, /重度吞嚥障礙伴隨高吸入風險/);
+    assert.match(html, /RSST.*4 次／30 秒/s);
+    assert.match(html, /篩檢陰性/);
+    assert.match(html, /有效吞嚥安全：口服進食不安全/);
   });
 });
 

@@ -33,11 +33,17 @@ import {
   wardOptions
 } from './clinicalLogic.js';
 import ToolAssessmentForm from './ToolAssessmentForm.jsx';
+import SwallowingAssessmentForm from './SwallowingAssessmentForm.jsx';
 import {
   createInitialToolAssessments,
   evaluateToolAssessment,
   updateToolAssessment
 } from './toolAssessments.js';
+import {
+  createInitialSwallowingAssessments,
+  evaluateSwallowingAssessments,
+  resolveSwallowingSafety
+} from './swallowingAssessments.js';
 
 const steps = [
   { id: 'home', title: '首頁', mobileTitle: '首頁', subtitle: 'Home', icon: Home },
@@ -411,6 +417,8 @@ function AssessmentScreen({
   syncAssessmentField,
   toolAssessments,
   setToolAssessments,
+  swallowingAssessments,
+  setSwallowingAssessments,
   focusNativeAssessment,
   setFocusNativeAssessment
 }) {
@@ -467,6 +475,13 @@ function AssessmentScreen({
             ))}
           </div>
         </Panel>
+        <Panel title="吞嚥篩檢（選填）" action="GUSS-T／RSST 可複選">
+          <SwallowingAssessmentForm
+            store={swallowingAssessments}
+            defaultRole={context.role}
+            onChange={setSwallowingAssessments}
+          />
+        </Panel>
         <div
           id="native-tool-assessment"
           className="native-assessment-anchor"
@@ -492,7 +507,7 @@ function AssessmentScreen({
           </div>
         </Panel>
       </main>
-      <SafetyPanel context={context} recommendation={recommendation} answers={answers} />
+      <SafetyPanel context={context} recommendation={recommendation} answers={answers} swallowingAssessments={swallowingAssessments} />
       <FooterActions back="回工具選擇" next="查看臨床結果" onBack={() => setActiveStep('tool')} onNext={() => setActiveStep('result')} nextDisabled={!assessmentStatus.isComplete} />
     </section>
   );
@@ -532,14 +547,21 @@ export function ResultScreen({
   overrideReason,
   answers,
   toolAssessment,
+  swallowingAssessments = createInitialSwallowingAssessments(),
   onContinueNativeAssessment,
   setActiveStep,
   onFinish
 }) {
   const selectedTool = overrideTool || recommendation.primaryTool;
   const nativeEvaluation = evaluateToolAssessment(selectedTool, toolAssessment, context);
-  const result = normalizeResult(context, answers, recommendation, overrideTool, nativeEvaluation);
-  const route = getRoute(context, answers, result);
+  const swallowingEvaluation = evaluateSwallowingAssessments(swallowingAssessments);
+  const swallowingResolution = resolveSwallowingSafety(
+    answers.swallow || context.oralSafety,
+    context.modifiers.dysphagia,
+    swallowingAssessments
+  );
+  const result = normalizeResult(context, answers, recommendation, overrideTool, nativeEvaluation, swallowingAssessments);
+  const route = getRoute(context, answers, result, swallowingAssessments);
   const referenceWeight = getReferenceWeight(context);
   const nativeComplete = result.nativeStatus === 'COMPLETE';
   const officialExternal = result.sourceMode === 'OFFICIAL_EXTERNAL';
@@ -566,6 +588,31 @@ export function ResultScreen({
         <ResultCard label="營養不良狀態" value={result.malnutrition} tone={getResultTone('malnutrition', result.malnutrition)} />
         <ResultCard label="處置優先度" value={result.priority} tone={getResultTone('priority', result.priority)} />
       </div>
+
+      {swallowingEvaluation.selectedTools.length > 0 && (
+        <Panel title="吞嚥篩檢結果">
+          <div className="swallowing-result-summary">
+            <Meta label="施測者角色" value={swallowingEvaluation.assessorRole || '未記錄'} />
+            <Meta label="有效吞嚥安全" value={getChineseStatus(swallowingResolution.status)} />
+            <Meta label="最高風險依據" value={swallowingResolution.reason} />
+            {swallowingEvaluation.selectedTools.map((toolId) => {
+              const evaluation = toolId === 'GUSS-T' ? swallowingEvaluation.GUSS : swallowingEvaluation.RSST;
+              const score = evaluation.nativeScore == null
+                ? '—'
+                : toolId === 'GUSS-T' ? `${evaluation.nativeScore} 分` : `${evaluation.nativeScore} 次／30 秒`;
+              return (
+                <div className="swallowing-result-item" key={toolId}>
+                  <strong>{toolId}</strong>
+                  <span>{getChineseStatus(evaluation.nativeStatus)} · {score}</span>
+                  <small>{evaluation.nativeCategory || '篩檢尚未完成'}</small>
+                  {evaluation.completedAt && <small>完成：{formatCompletedAt(evaluation.completedAt)}</small>}
+                </div>
+              );
+            })}
+            <p className="native-result-note">吞嚥篩檢結果不等同診斷；異常或不確定結果須依院內流程考慮語言治療、FEES 或 VFSS。</p>
+          </div>
+        </Panel>
+      )}
 
       <div className="wide-grid">
         <Panel title="原始評估結果">
@@ -686,6 +733,13 @@ ${nativeComplete ? `${completionLabel}：${completionValue}
 評估狀態：${getChineseStatus(result.assessmentStatus)}
 相關特殊因子：${recommendation.modifiers.map((item) => getChineseStatus(modifierLabels[item])).filter(Boolean).join('、') || '無'}
 ${overrideTool ? `專業調整：${overrideTool}；原因：${overrideReason}\n` : ''}資料品質：${result.dataQualityFlags.map(getChineseStatus).join('、') || '目前無資料品質提醒'}
+吞嚥篩檢：${swallowingEvaluation.selectedTools.length === 0 ? '未選擇（選填）' : swallowingEvaluation.selectedTools.map((toolId) => {
+    const evaluation = toolId === 'GUSS-T' ? swallowingEvaluation.GUSS : swallowingEvaluation.RSST;
+    const score = evaluation.nativeScore == null ? '無分數' : toolId === 'GUSS-T' ? `${evaluation.nativeScore} 分` : `${evaluation.nativeScore} 次／30 秒`;
+    return `${toolId} ${getChineseStatus(evaluation.nativeStatus)}，${score}，${evaluation.nativeCategory || '未完成'}`;
+  }).join('；')}
+吞嚥篩檢施測者：${swallowingEvaluation.selectedTools.length === 0 ? '不適用' : swallowingEvaluation.assessorRole || '未記錄'}
+有效吞嚥安全：${getChineseStatus(swallowingResolution.status)}（${swallowingResolution.reason}）
 營養照護：${route.title}
 安全警示：${result.safetyFlags.map(getChineseStatus).join('、') || '目前無安全警示'}`}</pre>
       </Panel>
@@ -701,15 +755,21 @@ ${overrideTool ? `專業調整：${overrideTool}；原因：${overrideReason}\n`
   );
 }
 
-function SafetyPanel({ context, recommendation, answers = {} }) {
-  const swallow = answers.swallow || context.oralSafety;
+function SafetyPanel({ context, recommendation, answers = {}, swallowingAssessments }) {
+  const manualSwallow = answers.swallow || context.oralSafety;
+  const swallowingResolution = resolveSwallowingSafety(
+    manualSwallow,
+    context.modifiers.dysphagia,
+    swallowingAssessments
+  );
+  const swallow = swallowingResolution.status;
   const gi = answers.gi || context.giFunction;
   const referenceWeight = getReferenceWeight(context);
   const alerts = [
     context.modifiers.refeeding && { tone: 'red', icon: AlertTriangle, title: 'High refeeding risk', text: '需完成院內 refeeding safety workflow' },
-    swallow === 'unsafe' && { tone: 'red', icon: ShieldAlert, title: 'Oral feeding unsafe', text: '不可直接建議 regular oral feeding' },
-    swallow !== 'safe' && swallow !== 'unsafe' && { tone: 'amber', icon: ShieldAlert, title: 'Swallowing safety pending', text: 'Oral feeding recommendation remains conditional' },
-    context.modifiers.dysphagia && swallow === 'safe' && { tone: 'gray', icon: Info, title: 'Swallowing data conflict', text: '請確認 dysphagia modifier 與 oral safety 狀態' },
+    swallow === 'unsafe' && { tone: 'red', icon: ShieldAlert, title: 'Oral feeding unsafe', text: swallowingResolution.reason },
+    swallow !== 'safe' && swallow !== 'unsafe' && { tone: 'amber', icon: ShieldAlert, title: 'Swallowing safety pending', text: swallowingResolution.reason },
+    context.modifiers.dysphagia && manualSwallow === 'safe' && { tone: 'gray', icon: Info, title: 'Swallowing data conflict', text: '請確認 dysphagia modifier 與人工 oral safety 狀態' },
     (context.modifiers.edemaAscites || context.modifiers.heartFailure) && { tone: 'blue', icon: Waves, title: 'Fluid-affected weight', text: `Reference weight: ${referenceWeight.value ?? 'unavailable'} kg (${referenceWeight.type})` },
     (!gi || gi === 'uncertain') && { tone: 'gray', icon: Info, title: 'GI tract uncertain', text: 'EN escalation pending assessment' }
   ].filter(Boolean);
@@ -864,6 +924,7 @@ export default function App() {
   const [overrideReason, setOverrideReason] = useState('');
   const [answers, setAnswers] = useState(createInitialAnswers);
   const [toolAssessments, setToolAssessments] = useState(createInitialToolAssessments);
+  const [swallowingAssessments, setSwallowingAssessments] = useState(createInitialSwallowingAssessments);
   const [focusNativeAssessment, setFocusNativeAssessment] = useState(false);
   const recommendation = useMemo(() => getRecommendation(context), [context]);
   const contextValidation = useMemo(() => getContextValidation(context), [context]);
@@ -894,6 +955,7 @@ export default function App() {
     setContext(createInitialContext());
     setAnswers(createInitialAnswers());
     setToolAssessments(createInitialToolAssessments());
+    setSwallowingAssessments(createInitialSwallowingAssessments());
     setFocusNativeAssessment(false);
     setOverrideTool('');
     setOverrideReason('');
@@ -936,6 +998,8 @@ export default function App() {
             syncAssessmentField={syncAssessmentField}
             toolAssessments={toolAssessments}
             setToolAssessments={setToolAssessments}
+            swallowingAssessments={swallowingAssessments}
+            setSwallowingAssessments={setSwallowingAssessments}
             focusNativeAssessment={focusNativeAssessment}
             setFocusNativeAssessment={setFocusNativeAssessment}
           />
@@ -948,6 +1012,7 @@ export default function App() {
             overrideReason={overrideReason}
             answers={answers}
             toolAssessment={toolAssessments[overrideTool || recommendation.primaryTool]}
+            swallowingAssessments={swallowingAssessments}
             onContinueNativeAssessment={continueNativeAssessment}
             setActiveStep={navigateTo}
             onFinish={finishAssessment}

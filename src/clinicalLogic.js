@@ -1,4 +1,5 @@
 import { evaluateToolAssessment } from './toolAssessments.js';
+import { resolveSwallowingSafety } from './swallowingAssessments.js';
 
 export const pathwayMeta = {
   ICU: { label: 'ICU', tool: 'mNUTRIC', reason: '重症照護路徑', priority: 1 },
@@ -62,6 +63,10 @@ const chineseStatusLabels = {
   'Measured weight (review required)': '測量體重（需檢視）',
   'Unavailable': '無可用資料',
   'not assessed': '尚未評估',
+  safe: '口服進食安全',
+  'suspected dysphagia': '疑似吞嚥障礙',
+  unsafe: '口服進食不安全',
+  'screen negative': '篩檢陰性',
   'Oral feeding unsafe': '口服進食不安全',
   'Swallowing safety pending': '吞嚥安全待確認',
   'Refeeding risk': '再餵食症候群風險',
@@ -349,8 +354,13 @@ export function getAssessmentStatus(answers) {
   };
 }
 
-function getSafetyAndQuality(context, answers) {
-  const swallow = answers.swallow || context.oralSafety;
+function getSafetyAndQuality(context, answers, swallowingScreening) {
+  const swallowingResolution = resolveSwallowingSafety(
+    answers.swallow || context.oralSafety,
+    context.modifiers.dysphagia,
+    swallowingScreening
+  );
+  const swallow = swallowingResolution.status;
   const intake = answers.intake || context.intake;
   const safetyFlags = [];
   const dataQualityFlags = [];
@@ -367,7 +377,7 @@ function getSafetyAndQuality(context, answers) {
   if (intake === 'not assessed') dataQualityFlags.push('Intake not assessed');
   if (context.modifiers.poorIntake && intake === '>=75%') dataQualityFlags.push('Intake status conflicts with poor-intake modifier');
 
-  return { safetyFlags, dataQualityFlags };
+  return { safetyFlags, dataQualityFlags, swallowingResolution };
 }
 
 function getClinicalPriority(answers, intake, safetyFlags, dataQualityFlags) {
@@ -387,11 +397,11 @@ function getClinicalPriority(answers, intake, safetyFlags, dataQualityFlags) {
   return red ? 'RED' : criticalUnknown ? 'GRAY' : amber ? 'AMBER' : 'GRAY';
 }
 
-export function normalizeResult(context, answers, recommendation, overrideTool, toolAssessment) {
+export function normalizeResult(context, answers, recommendation, overrideTool, toolAssessment, swallowingScreening) {
   const tool = overrideTool || recommendation?.primaryTool;
   const intake = answers.intake || context.intake;
   const assessmentStatus = getAssessmentStatus(answers);
-  const { safetyFlags, dataQualityFlags } = getSafetyAndQuality(context, answers);
+  const { safetyFlags, dataQualityFlags, swallowingResolution } = getSafetyAndQuality(context, answers, swallowingScreening);
 
   if (!assessmentStatus.isComplete) {
     return {
@@ -402,6 +412,8 @@ export function normalizeResult(context, answers, recommendation, overrideTool, 
       priority: safetyFlags.includes('Refeeding risk') ? 'RED' : 'GRAY',
       safetyFlags,
       dataQualityFlags,
+      effectiveSwallowingStatus: swallowingResolution.status,
+      swallowingSafetyReason: swallowingResolution.reason,
       reasons: ['Required assessment fields are missing', ...safetyFlags, ...dataQualityFlags],
       assessmentStatus: 'INCOMPLETE'
     };
@@ -439,13 +451,19 @@ export function normalizeResult(context, answers, recommendation, overrideTool, 
     priority,
     safetyFlags,
     dataQualityFlags,
+    effectiveSwallowingStatus: swallowingResolution.status,
+    swallowingSafetyReason: swallowingResolution.reason,
     reasons,
     assessmentStatus: nativeComplete ? 'COMPLETE' : 'TOOL_SCORE_PENDING'
   };
 }
 
-export function getRoute(context, answers, result) {
-  const oralSafety = answers.swallow || context.oralSafety;
+export function getRoute(context, answers, result, swallowingScreening) {
+  const oralSafety = resolveSwallowingSafety(
+    answers.swallow || context.oralSafety,
+    context.modifiers.dysphagia,
+    swallowingScreening
+  ).status;
   const gi = answers.gi || context.giFunction;
   const intake = answers.intake || context.intake;
   const refeedingRisk = result.safetyFlags.includes('Refeeding risk');

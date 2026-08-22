@@ -16,6 +16,9 @@
 - 工具選取與評估不受介面授權狀態閘門阻擋；工具來源版本與評估方式仍於 registry 顯示
 - Unified normalization：Nutrition Risk、Malnutrition Status、Action Priority 分開呈現
 - Safety Gate：dysphagia、refeeding risk、fluid-affected weight、GI tract status
+- 選填吞嚥篩檢：醫師、護理師或營養師可複選臺灣版古金吞嚥篩檢量表（GUSS-T）與 30 秒反覆唾液吞嚥測試（RSST）
+- GUSS-T 依正式臺灣版逐階開放、遇停止條件即中止並計算 0–20 分；RSST 以 0–2 次／30 秒為篩檢陽性門檻，另保留無法評估狀態
+- 複選結果採最高吞嚥風險優先；正常 RSST 不覆蓋異常 GUSS-T、人工判定或 dysphagia modifier，且吞嚥篩檢與營養風險／營養不良結果分開保存
 - Feeding Route Engine 與 Nutrition Care Bundle
 - Monitoring / Reassessment 與 structured documentation summary
 
@@ -35,3 +38,10 @@ pnpm run build
 ## 注意
 
 此版本為 clinical decision support prototype，不會自動開立醫囑，也不取代營養師或醫師判斷。本站不具 EMR 整合或遠端資料保存功能。正式臨床使用前，仍需完成院內 tool registry、rule registry、guideline version、適用族群、來源版本、法規／版權政策及臨床流程審查。
+
+## 吞嚥篩檢來源
+
+- [臺灣版古金吞嚥篩檢量表（GUSS-T）正式表單與指導手冊](https://www.donau-uni.ac.at/dam/jcr%3Ab58a247c-f865-4e7f-aca7-350cb4b5d580/GUSS%20Taiwan%20incl%20instructions.pdf)
+- [RSST 原始效度研究](https://doi.org/10.2490/jjrm1963.37.383)
+
+吞嚥篩檢結果不等同診斷，也不自動開立飲食或 NPO 醫囑；異常、不確定或臨床表現不一致時，應依院內流程考慮語言治療評估、FEES 或 VFSS。

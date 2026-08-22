@@ -15,6 +15,7 @@ import {
   normalizeResult
 } from './clinicalLogic.js';
 import { createEmptyToolAssessment, evaluateToolAssessment } from './toolAssessments.js';
+import { createInitialSwallowingAssessments } from './swallowingAssessments.js';
 
 const baseContext = {
   age: 76,
@@ -405,6 +406,63 @@ describe('normalization boundaries', () => {
 });
 
 describe('feeding route safety gate', () => {
+  test('uses a higher-risk GUSS-T result even when the manual field says safe', () => {
+    const swallowingScreening = {
+      ...createInitialSwallowingAssessments(),
+      selectedTools: ['GUSS-T'],
+      assessorRole: '護理師',
+      'GUSS-T': {
+        answers: {
+          indirect: {
+            alertness: 'yes',
+            voluntaryCough: 'yes',
+            salivaSwallow: 'yes',
+            drooling: 'no',
+            voiceChange: 'no'
+          },
+          semisolid: {
+            swallow: 'none',
+            involuntaryCough: 'no',
+            drooling: 'no',
+            voiceChange: 'no'
+          }
+        }
+      }
+    };
+    const result = normalizeResult(
+      baseContext,
+      completeAnswers,
+      getRecommendation(baseContext),
+      'NRS-2002',
+      createEmptyToolAssessment('NRS-2002'),
+      swallowingScreening
+    );
+    const route = getRoute(baseContext, completeAnswers, result, swallowingScreening);
+
+    assert.deepEqual(result.safetyFlags, ['Oral feeding unsafe']);
+    assert.equal(result.effectiveSwallowingStatus, 'unsafe');
+    assert.equal(route.level, 'R3');
+    assert.equal(route.status, 'ASSESS_APPROPRIATENESS');
+  });
+
+  test('keeps oral feeding pending when a selected swallowing screen is incomplete', () => {
+    const swallowingScreening = {
+      ...createInitialSwallowingAssessments(),
+      selectedTools: ['RSST'],
+      assessorRole: '營養師'
+    };
+    const route = getRoute(
+      baseContext,
+      completeAnswers,
+      { priority: 'GRAY', safetyFlags: [] },
+      swallowingScreening
+    );
+
+    assert.equal(route.level, 'R3');
+    assert.equal(route.status, 'PENDING_ASSESSMENT');
+    assert.match(route.title, /吞嚥安全評估/);
+  });
+
   test('keeps GI-uncertain escalation pending', () => {
     const route = getRoute(
       { ...baseContext, giFunction: 'uncertain' },
