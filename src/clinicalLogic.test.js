@@ -125,6 +125,7 @@ describe('patient context validation', () => {
   });
 
   for (const [diagnosis, group, key] of [
+    ['一般內科／營養評估', 'pathways', 'GENERAL'],
     ['重症／敗血症', 'pathways', 'ICU'],
     ['腎臟病／透析', 'pathways', 'RENAL'],
     ['肝硬化／肝病', 'pathways', 'LIVER'],
@@ -330,7 +331,7 @@ describe('normalization boundaries', () => {
     assert.equal(result.nutritionRisk, 'LOW');
   });
 
-  test('keeps priority derived from common and safety data instead of native scores', () => {
+  test('combines native results with common and safety data for priority', () => {
     const highNative = evaluateToolAssessment('mNUTRIC', {
       ...createEmptyToolAssessment('mNUTRIC'),
       answers: { apacheIi: '29', sofa: '10', comorbidities: '2', preIcuDays: '1' }
@@ -354,9 +355,61 @@ describe('normalization boundaries', () => {
     );
 
     assert.equal(benignCommon.nutritionRisk, 'HIGH');
-    assert.equal(benignCommon.priority, 'GRAY');
+    assert.equal(benignCommon.priority, 'RED');
     assert.equal(severeCommon.nutritionRisk, 'LOW');
     assert.equal(severeCommon.priority, 'RED');
+    assert.ok(severeCommon.safetyFlags.includes('Refeeding screen required'));
+  });
+
+  test('returns GREEN only when common, safety and native data are complete and benign', () => {
+    const lowNative = evaluateToolAssessment('NRS-2002', {
+      ...createEmptyToolAssessment('NRS-2002'),
+      answers: {
+        initialBmiLow: 'no', initialWeightLoss: 'no', initialReducedIntake: 'no', initialSevereIllness: 'no'
+      }
+    }, baseContext);
+    const pendingNative = evaluateToolAssessment('NRS-2002', createEmptyToolAssessment('NRS-2002'), baseContext);
+
+    const benign = normalizeResult(baseContext, completeAnswers, getRecommendation(baseContext), 'NRS-2002', lowNative);
+    const pending = normalizeResult(baseContext, completeAnswers, getRecommendation(baseContext), 'NRS-2002', pendingNative);
+
+    assert.equal(benign.priority, 'GREEN');
+    assert.deepEqual(benign.safetyFlags, []);
+    assert.equal(pending.priority, 'GRAY');
+  });
+
+  test('raises priority to AMBER for an at-risk native screen and RED for severe malnutrition', () => {
+    const atRisk = evaluateToolAssessment('NRS-2002', {
+      ...createEmptyToolAssessment('NRS-2002'),
+      answers: {
+        initialBmiLow: 'yes', initialWeightLoss: 'no', initialReducedIntake: 'no', initialSevereIllness: 'no',
+        nutritionScore: '1', diseaseScore: '1'
+      }
+    }, baseContext);
+    const severeSga = evaluateToolAssessment('7-point SGA', {
+      ...createEmptyToolAssessment('7-point SGA'),
+      answers: {
+        weightChange: 'loss', intakeChange: 'marked_reduction', giSymptoms: 'mild', functionalCapacity: 'reduced',
+        diseaseBurden: 'high', subcutaneousFat: 'severe', muscleWasting: 'severe', overallScore: '2'
+      }
+    });
+
+    const amber = normalizeResult(baseContext, completeAnswers, getRecommendation(baseContext), 'NRS-2002', atRisk);
+    const red = normalizeResult(baseContext, completeAnswers, getRecommendation(baseContext), '7-point SGA', severeSga);
+
+    assert.equal(amber.nutritionRisk, 'AT_RISK');
+    assert.equal(amber.priority, 'AMBER');
+    assert.equal(red.malnutrition, 'SEVERE');
+    assert.equal(red.priority, 'RED');
+    assert.deepEqual(red.safetyFlags, ['Refeeding screen required']);
+    assert.equal(getRoute(baseContext, completeAnswers, red).status, 'CONDITIONAL');
+  });
+
+  test('lists every other tool as an alternative', () => {
+    const recommendation = getRecommendation({ ...baseContext, age: 50, pathways: { ...baseContext.pathways, ICU: true } });
+    assert.equal(recommendation.primaryTool, 'mNUTRIC');
+    assert.equal(recommendation.alternatives.length, 5);
+    assert.ok(recommendation.alternatives.some((item) => item.tool === 'NRS-2002'));
   });
 
   test('flags contradictory intake data instead of silently choosing one value', () => {

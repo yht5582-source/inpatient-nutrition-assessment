@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   BadgeCheck,
   ClipboardCheck,
+  Copy,
   FileText,
   Home,
   Info,
@@ -21,6 +22,7 @@ import {
   getAssessmentStatus,
   getChineseStatus,
   getContextValidation,
+  getPriorityLabel,
   getRecommendation,
   getReferenceWeight,
   getResultTone,
@@ -502,7 +504,7 @@ function AssessmentScreen({
             <Metric label="BMI" value={bmi ?? '—'} />
             <Metric label="Reference weight" value={referenceWeight.value == null ? '—' : `${referenceWeight.value} kg`} note={referenceWeight.type} />
             <Metric label="Weight reliability" value={fluidAffected ? 'Fluid affected' : 'Reliable'} />
-            <Metric label="Selected tool" value={overrideTool || recommendation.primaryTool} note="Native scoring pending" />
+            <Metric label="Selected tool" value={selectedTool} note={nativeEvaluation.nativeStatus === 'COMPLETE' ? `${nativeEvaluation.nativeScore ?? '—'} · ${nativeEvaluation.nativeCategory}` : getChineseStatus(nativeEvaluation.nativeStatus)} />
             <Metric label="Entry route" value={context.role === '護理師' ? 'NURSING_SCREEN' : 'PROFESSIONAL_ASSESSMENT'} />
           </div>
         </Panel>
@@ -570,6 +572,32 @@ export function ResultScreen({
     ? nativeEvaluation.answers?.completedDate || '未記錄'
     : formatCompletedAt(result.completedAt);
   const pendingNativeItems = new Set([...(result.missing || []), ...(result.invalid || [])]).size;
+  const bmi = calculateBmi(context.weight, context.height);
+  const noteText = `營養評估摘要
+病人：${context.age} 歲，${context.sex}；身高 ${context.height} cm，體重 ${context.weight} kg，BMI ${bmi ?? '—'}；參考體重 ${referenceWeight.value ?? '—'} kg（${getChineseStatus(referenceWeight.type)}）
+主要臨床路徑：${getChineseStatus(recommendation.primaryPathway)}
+評估工具：${result.tool}
+原始評估狀態：${getChineseStatus(result.nativeStatus)}
+原始分數：${nativeComplete ? result.nativeScore : '未完成'}
+原始分類：${nativeComplete ? result.nativeCategory : '未完成'}
+來源模式：${getChineseStatus(result.sourceMode)}
+${nativeComplete ? `${completionLabel}：${completionValue}
+正規化領域：營養風險 ${getChineseStatus(result.nutritionRisk)}；營養不良 ${getChineseStatus(result.malnutrition)}` : '原始量表尚未完成；不得以共同臨床資料推測量表分數'}
+營養風險：${getChineseStatus(result.nutritionRisk)}
+營養不良狀態：${getChineseStatus(result.malnutrition)}
+處置優先度：${getPriorityLabel(result.priority)}
+評估狀態：${getChineseStatus(result.assessmentStatus)}
+相關特殊因子：${recommendation.modifiers.map((item) => getChineseStatus(modifierLabels[item])).filter(Boolean).join('、') || '無'}
+${overrideTool ? `專業調整：${overrideTool}；原因：${overrideReason}\n` : ''}資料品質：${result.dataQualityFlags.map(getChineseStatus).join('、') || '目前無資料品質提醒'}
+吞嚥篩檢：${swallowingEvaluation.selectedTools.length === 0 ? '未選擇（選填）' : swallowingEvaluation.selectedTools.map((toolId) => {
+    const evaluation = toolId === 'GUSS-T' ? swallowingEvaluation.GUSS : swallowingEvaluation.RSST;
+    const score = evaluation.nativeScore == null ? '無分數' : toolId === 'GUSS-T' ? `${evaluation.nativeScore} 分` : `${evaluation.nativeScore} 次／30 秒`;
+    return `${toolId} ${getChineseStatus(evaluation.nativeStatus)}，${score}，${evaluation.nativeCategory || '未完成'}`;
+  }).join('；')}
+吞嚥篩檢施測者：${swallowingEvaluation.selectedTools.length === 0 ? '不適用' : swallowingEvaluation.assessorRole || '未記錄'}
+有效吞嚥安全：${getChineseStatus(swallowingResolution.status)}（${swallowingResolution.reason}）
+營養照護：${route.title}
+安全警示：${result.safetyFlags.map(getChineseStatus).join('、') || '目前無安全警示'}`;
   return (
     <section className="screen result-screen">
       <Panel title="臨床摘要">
@@ -586,7 +614,7 @@ export function ResultScreen({
       <div className="result-grid">
         <ResultCard label="營養風險" value={result.nutritionRisk} tone={getResultTone('risk', result.nutritionRisk)} />
         <ResultCard label="營養不良狀態" value={result.malnutrition} tone={getResultTone('malnutrition', result.malnutrition)} />
-        <ResultCard label="處置優先度" value={result.priority} tone={getResultTone('priority', result.priority)} />
+        <ResultCard label="處置優先度" value={result.priority} display={getPriorityLabel(result.priority)} tone={getResultTone('priority', result.priority)} />
       </div>
 
       {swallowingEvaluation.selectedTools.length > 0 && (
@@ -675,7 +703,7 @@ export function ResultScreen({
               <ShieldAlert size={18} />
               <div>
                 <strong>{getChineseStatus(flag)}</strong>
-                <span>{flag === 'Refeeding risk' ? '營養供應增加前需完成電解質、硫胺素與漸進供應計畫。' : '此條件會影響營養供應途徑，需先完成安全確認。'}</span>
+                <span>{safetyFlagText[flag] || '此條件會影響營養供應途徑，需先完成安全確認。'}</span>
               </div>
               <StatusChip tone={flag === 'Refeeding risk' || flag === 'Oral feeding unsafe' ? 'red' : 'amber'}>{getChineseStatus(flag === 'Oral feeding unsafe' ? 'BLOCKING' : 'PENDING')}</StatusChip>
             </div>
@@ -717,31 +745,8 @@ export function ResultScreen({
         </div>
       </Panel>
 
-      <Panel title="病歷紀錄摘要">
-        <pre className="note-preview">{`營養評估摘要
-主要臨床路徑：${getChineseStatus(recommendation.primaryPathway)}
-評估工具：${result.tool}
-原始評估狀態：${getChineseStatus(result.nativeStatus)}
-原始分數：${nativeComplete ? result.nativeScore : '未完成'}
-原始分類：${nativeComplete ? result.nativeCategory : '未完成'}
-來源模式：${getChineseStatus(result.sourceMode)}
-${nativeComplete ? `${completionLabel}：${completionValue}
-正規化領域：營養風險 ${getChineseStatus(result.nutritionRisk)}；營養不良 ${getChineseStatus(result.malnutrition)}` : '原始量表尚未完成；不得以共同臨床資料推測量表分數'}
-營養風險：${getChineseStatus(result.nutritionRisk)}
-營養不良狀態：${getChineseStatus(result.malnutrition)}
-處置優先度：${getChineseStatus(result.priority)}
-評估狀態：${getChineseStatus(result.assessmentStatus)}
-相關特殊因子：${recommendation.modifiers.map((item) => getChineseStatus(modifierLabels[item])).filter(Boolean).join('、') || '無'}
-${overrideTool ? `專業調整：${overrideTool}；原因：${overrideReason}\n` : ''}資料品質：${result.dataQualityFlags.map(getChineseStatus).join('、') || '目前無資料品質提醒'}
-吞嚥篩檢：${swallowingEvaluation.selectedTools.length === 0 ? '未選擇（選填）' : swallowingEvaluation.selectedTools.map((toolId) => {
-    const evaluation = toolId === 'GUSS-T' ? swallowingEvaluation.GUSS : swallowingEvaluation.RSST;
-    const score = evaluation.nativeScore == null ? '無分數' : toolId === 'GUSS-T' ? `${evaluation.nativeScore} 分` : `${evaluation.nativeScore} 次／30 秒`;
-    return `${toolId} ${getChineseStatus(evaluation.nativeStatus)}，${score}，${evaluation.nativeCategory || '未完成'}`;
-  }).join('；')}
-吞嚥篩檢施測者：${swallowingEvaluation.selectedTools.length === 0 ? '不適用' : swallowingEvaluation.assessorRole || '未記錄'}
-有效吞嚥安全：${getChineseStatus(swallowingResolution.status)}（${swallowingResolution.reason}）
-營養照護：${route.title}
-安全警示：${result.safetyFlags.map(getChineseStatus).join('、') || '目前無安全警示'}`}</pre>
+      <Panel title="病歷紀錄摘要" action={<CopyButton text={noteText} />}>
+        <pre className="note-preview">{noteText}</pre>
       </Panel>
 
       <FooterActions
@@ -754,6 +759,11 @@ ${overrideTool ? `專業調整：${overrideTool}；原因：${overrideReason}\n`
     </section>
   );
 }
+
+const safetyFlagText = {
+  'Refeeding risk': '營養供應增加前需完成電解質、硫胺素與漸進供應計畫。',
+  'Refeeding screen required': '極低攝取、明顯體重下降、嚴重肌肉流失或嚴重營養不良：開始或增加營養供應前，依院內流程完成再餵食風險篩檢（磷、鉀、鎂、硫胺素）。'
+};
 
 function SafetyPanel({ context, recommendation, answers = {}, swallowingAssessments }) {
   const manualSwallow = answers.swallow || context.oralSafety;
@@ -807,6 +817,40 @@ function SafetyPanel({ context, recommendation, answers = {}, swallowingAssessme
         </div>
       </Panel>
     </aside>
+  );
+}
+
+function CopyButton({ text }) {
+  const [state, setState] = useState('idle');
+  useEffect(() => {
+    if (state === 'idle') return undefined;
+    const timer = window.setTimeout(() => setState('idle'), 2000);
+    return () => window.clearTimeout(timer);
+  }, [state]);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setState('done');
+      return;
+    } catch {
+      // Older embedded browsers (e.g. HIS webviews) may lack the async clipboard API.
+    }
+    const area = document.createElement('textarea');
+    area.value = text;
+    area.setAttribute('readonly', '');
+    area.style.position = 'fixed';
+    area.style.opacity = '0';
+    document.body.appendChild(area);
+    area.select();
+    const copied = document.execCommand('copy');
+    area.remove();
+    setState(copied ? 'done' : 'failed');
+  };
+  return (
+    <button type="button" className="copy-button" onClick={copy}>
+      <Copy size={15} />
+      {state === 'done' ? '已複製' : state === 'failed' ? '複製失敗，請手動選取' : '複製摘要'}
+    </button>
   );
 }
 
@@ -876,11 +920,11 @@ function Metric({ label, value, note }) {
   );
 }
 
-function ResultCard({ label, value, tone }) {
+function ResultCard({ label, value, display, tone }) {
   return (
     <section className={cx('result-card', tone)}>
       <span>{label}</span>
-      <strong className="result-value">{getChineseStatus(value)}</strong>
+      <strong className="result-value">{display || getChineseStatus(value)}</strong>
       <small>{label === '處置優先度' ? '臨床處置層級' : '正規化結果'}</small>
     </section>
   );
@@ -951,7 +995,25 @@ export default function App() {
     setActiveStep(step);
   };
 
+  const hasEnteredData = context.patientName !== '' || context.age !== '' || context.height !== '' || context.weight !== '';
+
+  useEffect(() => {
+    if (!hasEnteredData) return undefined;
+    const warn = (event) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [hasEnteredData]);
+
+  useEffect(() => {
+    // The native-assessment shortcut scrolls to its own anchor instead.
+    if (!focusNativeAssessment) window.scrollTo({ top: 0 });
+  }, [activeStep]);
+
   const finishAssessment = () => {
+    if (!window.confirm('將清除本次所有輸入並回到首頁，請確認已複製或記錄病歷摘要。')) return;
     setContext(createInitialContext());
     setAnswers(createInitialAnswers());
     setToolAssessments(createInitialToolAssessments());

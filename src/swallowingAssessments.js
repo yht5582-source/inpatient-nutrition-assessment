@@ -74,6 +74,7 @@ export function evaluateGuss(record = {}) {
   const stageAccess = { indirect: true, semisolid: false, liquid: false, solid: false };
   let totalScore = 0;
   let answered = 0;
+  let fieldsSoFar = 0;
 
   for (let index = 0; index < stageOrder.length; index += 1) {
     const stage = stageOrder[index];
@@ -86,9 +87,10 @@ export function evaluateGuss(record = {}) {
       .filter((field) => stageAnswers[field] === '' || stageAnswers[field] == null)
       .map((field) => `${stage}.${field}`);
     answered += fields.length - missing.length;
+    fieldsSoFar += fields.length;
 
     if (invalid.length > 0 || missing.length > 0) {
-      const denominator = (index + 1) * 5;
+      const denominator = fieldsSoFar;
       return evaluationBase(hasRecordedAnswer(answers) ? 'IN_PROGRESS' : 'NOT_STARTED', {
         missing,
         invalid,

@@ -25,6 +25,14 @@ const directPass = {
 };
 
 describe('GUSS-T staged evaluation', () => {
+  test('progress counts four items per direct stage', () => {
+    const result = evaluateGuss({ answers: { indirect: indirectPass, semisolid: { swallow: 'successful' } } });
+    assert.equal(result.total, 9);
+    assert.equal(result.answered, 6);
+    assert.equal(result.percent, 67);
+  });
+
+
   test('a complete four-stage pass scores 20', () => {
     const result = evaluateGuss({
       answers: {

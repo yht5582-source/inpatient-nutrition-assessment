@@ -70,6 +70,7 @@ const chineseStatusLabels = {
   'Oral feeding unsafe': '口服進食不安全',
   'Swallowing safety pending': '吞嚥安全待確認',
   'Refeeding risk': '再餵食症候群風險',
+  'Refeeding screen required': '需完成再餵食風險篩檢',
   'Fluid-affected weight': '體液狀態影響體重',
   'Swallowing status conflicts with dysphagia modifier': '吞嚥狀態與吞嚥障礙特殊因子不一致',
   'GI tract uncertain': '胃腸道可用性不確定',
@@ -93,6 +94,17 @@ const chineseStatusLabels = {
   'poor intake': '攝取不足'
 };
 
+const priorityMeanings = {
+  RED: '高優先處理：需安全檢查與營養照護計畫',
+  AMBER: '需營養師或專業評估',
+  GREEN: '例行營養照護與定期重篩',
+  GRAY: '資料不足或不可靠，不硬算結果'
+};
+
+export function getPriorityLabel(value) {
+  return priorityMeanings[value] ? `${chineseStatusLabels[value]}｜${priorityMeanings[value]}` : getChineseStatus(value);
+}
+
 export function getChineseStatus(value) {
   if (value == null || value === '') return '未提供';
   return chineseStatusLabels[value] || value;
@@ -114,6 +126,7 @@ export const diagnosisOptions = [
 ];
 
 const diagnosisLinkage = {
+  '一般內科／營養評估': ['pathways', 'GENERAL'],
   '重症／敗血症': ['pathways', 'ICU'],
   '腎臟病／透析': ['pathways', 'RENAL'],
   '肝硬化／肝病': ['pathways', 'LIVER'],
@@ -319,7 +332,6 @@ export function getRecommendation(context) {
 
   const alternatives = Object.entries(pathwayMeta)
     .filter(([key]) => key !== primary)
-    .slice(0, 4)
     .map(([key, value]) => ({
       tool: value.tool,
       use: value.reason,
@@ -354,7 +366,7 @@ export function getAssessmentStatus(answers) {
   };
 }
 
-function getSafetyAndQuality(context, answers, swallowingScreening) {
+function getSafetyAndQuality(context, answers, swallowingScreening, nativeMalnutrition) {
   const swallowingResolution = resolveSwallowingSafety(
     answers.swallow || context.oralSafety,
     context.modifiers.dysphagia,
@@ -370,6 +382,16 @@ function getSafetyAndQuality(context, answers, swallowingScreening) {
     safetyFlags.push('Swallowing safety pending');
   }
   if (context.modifiers.refeeding) safetyFlags.push('Refeeding risk');
+  else if (
+    intake === '<25% 或幾乎無攝取'
+    || answers.weightLoss === '是，明顯'
+    || answers.muscleLoss === '嚴重'
+    || nativeMalnutrition === 'SEVERE'
+    || nativeMalnutrition === 'MALNOURISHED'
+  ) {
+    // Spec 10.4: severe malnutrition, very low intake or marked weight loss require a refeeding screen.
+    safetyFlags.push('Refeeding screen required');
+  }
 
   if (context.modifiers.edemaAscites || context.modifiers.heartFailure) dataQualityFlags.push('Fluid-affected weight');
   if (context.modifiers.dysphagia && swallow === 'safe') dataQualityFlags.push('Swallowing status conflicts with dysphagia modifier');
@@ -380,7 +402,7 @@ function getSafetyAndQuality(context, answers, swallowingScreening) {
   return { safetyFlags, dataQualityFlags, swallowingResolution };
 }
 
-function getClinicalPriority(answers, intake, safetyFlags, dataQualityFlags) {
+function getClinicalPriority(answers, intake, safetyFlags, dataQualityFlags, nativeEvaluation) {
   const severeSignals = [
     answers.muscleLoss === '嚴重',
     answers.weightLoss === '是，明顯',
@@ -391,17 +413,31 @@ function getClinicalPriority(answers, intake, safetyFlags, dataQualityFlags) {
     answers.weightLoss === '是，輕度',
     intake === '25-49%'
   ].filter(Boolean).length;
-  const red = severeSignals >= 2 || safetyFlags.includes('Refeeding risk');
-  const amber = severeSignals === 1 || moderateSignals >= 1 || safetyFlags.length > 0 || dataQualityFlags.length > 0;
-  const criticalUnknown = dataQualityFlags.includes('GI tract uncertain') || dataQualityFlags.includes('Intake not assessed');
-  return red ? 'RED' : criticalUnknown ? 'GRAY' : amber ? 'AMBER' : 'GRAY';
+  const nativeComplete = nativeEvaluation?.nativeStatus === 'COMPLETE';
+  const nativeRisk = nativeComplete ? nativeEvaluation.normalizedNutritionRisk : 'UNKNOWN';
+  const nativeMalnutrition = nativeComplete ? nativeEvaluation.normalizedMalnutrition : 'UNKNOWN';
+  // Spec 13.5: priority explains native result + safety flags + intake + modifiers.
+  const nativeRed = nativeRisk === 'HIGH' || nativeMalnutrition === 'SEVERE' || nativeMalnutrition === 'MALNOURISHED';
+  const nativeAmber = nativeRisk === 'AT_RISK' || nativeMalnutrition === 'MODERATE';
+  const red = severeSignals >= 2 || safetyFlags.includes('Refeeding risk') || nativeRed;
+  const amber = severeSignals === 1 || moderateSignals >= 1 || nativeAmber || safetyFlags.length > 0 || dataQualityFlags.length > 0;
+  const criticalUnknown = !nativeComplete
+    || dataQualityFlags.includes('GI tract uncertain')
+    || dataQualityFlags.includes('Intake not assessed');
+  return red ? 'RED' : criticalUnknown ? 'GRAY' : amber ? 'AMBER' : 'GREEN';
 }
 
 export function normalizeResult(context, answers, recommendation, overrideTool, toolAssessment, swallowingScreening) {
   const tool = overrideTool || recommendation?.primaryTool;
   const intake = answers.intake || context.intake;
   const assessmentStatus = getAssessmentStatus(answers);
-  const { safetyFlags, dataQualityFlags, swallowingResolution } = getSafetyAndQuality(context, answers, swallowingScreening);
+  const nativeEvaluation = !tool
+    ? null
+    : toolAssessment?.answered == null
+      ? evaluateToolAssessment(tool, toolAssessment, context)
+      : toolAssessment;
+  const nativeMalnutrition = nativeEvaluation?.nativeStatus === 'COMPLETE' ? nativeEvaluation.normalizedMalnutrition : 'UNKNOWN';
+  const { safetyFlags, dataQualityFlags, swallowingResolution } = getSafetyAndQuality(context, answers, swallowingScreening, nativeMalnutrition);
 
   if (!assessmentStatus.isComplete) {
     return {
@@ -419,10 +455,7 @@ export function normalizeResult(context, answers, recommendation, overrideTool, 
     };
   }
 
-  const priority = getClinicalPriority(answers, intake, safetyFlags, dataQualityFlags);
-  const nativeEvaluation = toolAssessment?.answered == null
-    ? evaluateToolAssessment(tool, toolAssessment, context)
-    : toolAssessment;
+  const priority = getClinicalPriority(answers, intake, safetyFlags, dataQualityFlags, nativeEvaluation);
   const nativeComplete = nativeEvaluation.nativeStatus === 'COMPLETE';
   const native = nativeComplete ? nativeEvaluation.nativeCategory : '原始評估未完成';
   const reasons = [...new Set([
@@ -466,7 +499,7 @@ export function getRoute(context, answers, result, swallowingScreening) {
   ).status;
   const gi = answers.gi || context.giFunction;
   const intake = answers.intake || context.intake;
-  const refeedingRisk = result.safetyFlags.includes('Refeeding risk');
+  const refeedingRisk = result.safetyFlags.includes('Refeeding risk') || result.safetyFlags.includes('Refeeding screen required');
   const conditionForRefeeding = (route) => {
     if (!refeedingRisk) return route;
     if (route.level === 'Pending') {
@@ -559,6 +592,5 @@ export function getResultTone(domain, value) {
   if (value === 'HIGH' || value === 'SEVERE' || value === 'MALNOURISHED' || value === 'RED') return 'red';
   if (value === 'AT_RISK' || value === 'MODERATE' || value === 'AMBER') return 'amber';
   if (value === 'UNKNOWN' || value === 'NOT_APPLICABLE' || value === 'NOT_ASSESSED' || value === 'GRAY') return 'gray';
-  if (domain === 'priority' && value === 'GREEN') return 'green';
   return 'green';
 }

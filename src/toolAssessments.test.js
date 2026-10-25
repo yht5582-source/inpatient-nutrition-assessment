@@ -275,6 +275,12 @@ describe('mNUTRIC', () => {
     assert.equal(result.normalizedMalnutrition, 'NOT_APPLICABLE');
   });
 
+  test('assigns APACHE II 27 two points and 28 three points', () => {
+    const base = { sofa: '0', comorbidities: '0', preIcuDays: '0' };
+    assert.equal(scoreMNutric({ ...base, apacheIi: '27' }, { age: 40 }).nativeScore, 2);
+    assert.equal(scoreMNutric({ ...base, apacheIi: '28' }, { age: 40 }).nativeScore, 3);
+  });
+
   test('uses the five-point high-risk threshold', () => {
     const result = scoreMNutric({ apacheIi: '20', sofa: '6', comorbidities: '2', preIcuDays: '0' }, { age: 50 });
 

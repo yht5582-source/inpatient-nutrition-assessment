@@ -183,7 +183,8 @@ export function scoreMNutric(answers = {}, context = {}) {
 
   const age = toNumber(context.age);
   const agePoints = age < 50 ? 0 : age < 75 ? 1 : 2;
-  const apachePoints = apache < 15 ? 0 : apache < 20 ? 1 : apache <= 28 ? 2 : 3;
+  // Heyland 2011 / Rahman 2016 table: 15–19 → 1, 20–27 → 2, ≥28 → 3 (MDCalc reading of the 20–28/≥28 overlap).
+  const apachePoints = apache < 15 ? 0 : apache < 20 ? 1 : apache < 28 ? 2 : 3;
   const sofaPoints = sofa < 6 ? 0 : sofa < 10 ? 1 : 2;
   const comorbidityPoints = comorbidities < 2 ? 0 : 1;
   const preIcuPoints = preIcuDays < 1 ? 0 : 1;
