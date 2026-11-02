@@ -605,3 +605,49 @@ describe('feeding route safety gate', () => {
     assert.match(route.title, /EN/);
   });
 });
+
+describe('intake duration and refeeding screen', () => {
+  const base = { intake: '25-49%', weightLoss: '否', muscleLoss: '無', gi: 'functional', swallow: 'safe' };
+  const context = {
+    age: 60, height: 170, weight: 65, dietStatus: '一般飲食', intake: '25-49%', giFunction: 'functional', oralSafety: 'safe',
+    pathways: { GENERAL: true }, modifiers: {}
+  };
+  const run = (answers) => normalizeResult(context, answers, getRecommendation(context), '', {
+    nativeStatus: 'COMPLETE', nativeScore: 3, nativeCategory: '有營養風險', answered: 1, normalizedNutritionRisk: 'AT_RISK', normalizedMalnutrition: 'NOT_APPLICABLE'
+  });
+
+  test('is asked and required only at 25-49% intake', () => {
+    assert.equal(getAssessmentStatus(base).isComplete, false);
+    assert.deepEqual(getAssessmentStatus(base).missing, ['intakeDuration']);
+    assert.equal(getAssessmentStatus({ ...base, intakeDuration: '≤5 天' }).isComplete, true);
+    assert.equal(getAssessmentStatus({ ...base, intake: '50-74%' }).total, 5);
+    assert.equal(getAssessmentStatus({ ...base, intake: '<25% 或幾乎無攝取' }).isComplete, true);
+  });
+
+  for (const duration of ['6-7 天', '>7 天']) {
+    test(`${duration} requires a refeeding screen and conditions the route`, () => {
+      const answers = { ...base, intakeDuration: duration };
+      const result = run(answers);
+      assert.deepEqual(result.safetyFlags, ['Refeeding screen required']);
+      assert.equal(getRoute(context, answers, result).status, 'CONDITIONAL');
+    });
+  }
+
+  test('5 days or fewer adds no flag', () => {
+    const result = run({ ...base, intakeDuration: '≤5 天' });
+    assert.deepEqual(result.safetyFlags, []);
+    assert.deepEqual(result.dataQualityFlags, []);
+  });
+
+  test('unknown duration is a data-quality flag, not a pass', () => {
+    const result = run({ ...base, intakeDuration: '不確定' });
+    assert.deepEqual(result.safetyFlags, []);
+    assert.deepEqual(result.dataQualityFlags, ['Intake duration unknown']);
+    assert.equal(result.priority, 'AMBER');
+  });
+
+  test('a stale duration is ignored once intake changes', () => {
+    const result = run({ ...base, intake: '50-74%', intakeDuration: '>7 天' });
+    assert.deepEqual(result.safetyFlags, []);
+  });
+});

@@ -86,14 +86,14 @@ export const demoCases = [
       height: 168, weight: 60, diagnosis: '手術／術後', dietStatus: '軟質飲食',
       pathways: { GENERAL: true }
     },
-    answers: { intake: '25-49%', weightLoss: '是，輕度', muscleLoss: '輕度', gi: 'functional', swallow: 'safe' },
+    answers: { intake: '25-49%', intakeDuration: '>7 天', weightLoss: '是，輕度', muscleLoss: '輕度', gi: 'functional', swallow: 'safe' },
     toolAnswers: {
       initialBmiLow: 'no', initialWeightLoss: 'yes', initialReducedIntake: 'yes', initialSevereIllness: 'no',
       nutritionScore: '2', diseaseScore: '2'
     },
     expected: {
       tool: 'NRS-2002', score: 4, category: '有營養風險', risk: 'AT_RISK', malnutrition: 'NOT_APPLICABLE',
-      priority: 'AMBER', routeLevel: 'R1', routeStatus: 'RECOMMENDED', safetyFlags: [], qualityFlags: []
+      priority: 'AMBER', routeLevel: 'R1', routeStatus: 'CONDITIONAL', safetyFlags: ['Refeeding screen required'], qualityFlags: []
     },
     reasoning: [
       '體重 3 個月 >5% 只有 1 分，但前一週攝取 25–60% 為 2 分，營養狀態取最高的一項：2 分。',
@@ -104,7 +104,7 @@ export const demoCases = [
       '要下營養不良診斷需走 GLIM 第二步：體重下降 7%（6 個月內 5–10%）為外表型準則、攝取 ≤50% 超過 1 週為病因準則，分級 Stage 1。',
       'GLIM 由臨床人員判定，本工具目前不計算。',
       '口服安全且攝取不足時，先優化口服並考慮 ONS；持續不足才評估 EN。',
-      '攝取 <50% 超過 5 天的急性病況，單項即符合 ASPEN 明顯再餵食風險；工具只在攝取 <25% 時自動提示，此例應手動勾選。帶入後可勾選，比較優先度與途徑的變化。'
+      '攝取 <50% 超過 5 天的急性病況，單項即符合 ASPEN 明顯再餵食風險。此例已 9 天，工具自動要求再餵食篩檢，ONS 建議變成完成流程後才執行。'
     ],
     refs: ['kondrup', 'glim', 'aspenRs']
   },
@@ -118,7 +118,7 @@ export const demoCases = [
       height: 150, weight: 41, diagnosis: '高齡衰弱', dietStatus: '軟質飲食',
       pathways: { GERIATRIC: true }
     },
-    answers: { intake: '25-49%', weightLoss: '是，輕度', muscleLoss: '中度', gi: 'functional', swallow: 'safe' },
+    answers: { intake: '25-49%', intakeDuration: '>7 天', weightLoss: '是，輕度', muscleLoss: '中度', gi: 'functional', swallow: 'safe' },
     toolAnswers: { officialScore: '9', officialCategory: '有營養不良風險', confirmed: true },
     swallowing: {
       assessorRole: '護理師',
@@ -131,8 +131,8 @@ export const demoCases = [
     },
     expected: {
       tool: 'MNA-SF', score: 9, category: '有營養不良風險', risk: 'AT_RISK', malnutrition: 'UNKNOWN',
-      priority: 'AMBER', routeLevel: 'R3', routeStatus: 'PENDING_ASSESSMENT',
-      safetyFlags: ['Swallowing safety pending'], qualityFlags: [], gussScore: 12
+      priority: 'AMBER', routeLevel: 'R3', routeStatus: 'CONDITIONAL',
+      safetyFlags: ['Swallowing safety pending', 'Refeeding screen required'], qualityFlags: [], gussScore: 12
     },
     reasoning: [
       '未符合其他疾病路徑，年齡 ≥65，首選 MNA-SF；9 分落在 8–11 有風險，分數由官方工具回填，本站不重算。',
@@ -142,7 +142,7 @@ export const demoCases = [
     points: [
       'GUSS-T 10–14 分的表單建議：泥狀質地（IDDSI 3–4）、所有液體增稠，並可考慮 FEES／VFSS 或轉介語言治療。',
       'MNA-SF「有風險」不代表程度輕：BMI 18.2、≥70 歲已達 GLIM Stage 2 的 BMI 門檻（<20），亞洲 BMI 分級仍待共識，需臨床確認。',
-      '工具的再餵食自動提示不看 BMI，也不看攝取天數。此例攝取 <50% 已 8 天，單項即符合 ASPEN 明顯風險，應手動勾選；帶入後可自行勾選比較。'
+      '此例攝取 <50% 已 8 天，單項即符合 ASPEN 明顯風險，工具自動要求再餵食篩檢。工具不看 BMI，BMI 與合併症仍需人工判斷。'
     ],
     refs: ['kaiser', 'guss', 'rsst', 'glim', 'aspenRs']
   },
@@ -150,13 +150,13 @@ export const demoCases = [
     id: 'renal-hd-hf',
     tag: '透析＋心衰竭｜7-point SGA',
     title: '透析合併水腫：BMI 正常但嚴重營養不良',
-    vignette: '76 歲男性，血液透析合併心衰竭。測量體重 67.2 kg，乾體重 63.5 kg，身高 165 cm（以測量體重算 BMI 24.7）。近期體重持續下降，攝取約需求的三到四成。皮下脂肪與肌肉皆嚴重流失，營養師整體評定 2 分。',
+    vignette: '76 歲男性，血液透析合併心衰竭。測量體重 67.2 kg，乾體重 63.5 kg，身高 165 cm（以測量體重算 BMI 24.7）。近期體重持續下降，攝取約需求的三到四成已約 2 週。皮下脂肪與肌肉皆嚴重流失，營養師整體評定 2 分。',
     context: {
       patientName: '示範三', age: 76, sex: '男', ward: '透析病房', bed: '示範-3', admissionDay: 3,
       height: 165, weight: 67.2, dryWeight: 63.5, diagnosis: '腎臟病／透析', dietStatus: '一般飲食', renalModality: 'HD',
       pathways: { RENAL: true }, modifiers: { heartFailure: true, edemaAscites: true }
     },
-    answers: { intake: '25-49%', weightLoss: '是，明顯', muscleLoss: '嚴重', gi: 'functional', swallow: 'safe' },
+    answers: { intake: '25-49%', intakeDuration: '>7 天', weightLoss: '是，明顯', muscleLoss: '嚴重', gi: 'functional', swallow: 'safe' },
     toolAnswers: {
       weightChange: 'loss', intakeChange: 'marked_reduction', giSymptoms: 'mild', functionalCapacity: 'reduced',
       diseaseBurden: 'high', subcutaneousFat: 'severe', muscleWasting: 'severe', overallScore: '2'
@@ -188,7 +188,7 @@ export const demoCases = [
       height: 170, weight: 72, dryWeight: 64, diagnosis: '肝硬化／肝病', dietStatus: '一般飲食',
       pathways: { LIVER: true }, modifiers: { edemaAscites: true, refeeding: true }
     },
-    answers: { intake: '25-49%', weightLoss: '不確定', muscleLoss: '中度', gi: 'functional', swallow: 'safe' },
+    answers: { intake: '25-49%', intakeDuration: '6-7 天', weightLoss: '不確定', muscleLoss: '中度', gi: 'functional', swallow: 'safe' },
     toolAnswers: {
       alcoholicHepatitis: 'no', tubeFeeding: 'no', fluidOverload: 'yes',
       incompleteMealsFromFluid: 'sometimes', intakeReducedFifty: 'yes', fluidWeightLoss: 'uncertain'
@@ -201,7 +201,7 @@ export const demoCases = [
     reasoning: [
       '有體液超載，不用 BMI 分支：體液超載 1＋有時吃不完 1＋攝取減少 >50% 2＋體重難判斷 1＝5 分。',
       'RFH-NPT 低 0、中 1、高 2–7，5 分為高風險，處置優先度為紅色。',
-      '攝取 <50% 超過 5 天的急性病況，單項即符合 ASPEN 明顯風險，再餵食需由臨床人員勾選，途徑才會變有條件。'
+      '攝取 <50% 超過 5 天的急性病況，單項即符合 ASPEN 明顯風險；臨床評估後勾選再餵食風險，途徑因此變有條件。'
     ],
     points: [
       'ESPEN：RFH-NPT 辨識肝病營養風險比 NRS-2002 更敏感。腹水使體重與 BMI 難以解讀，參考體重改用估計乾體重。',
@@ -581,7 +581,7 @@ export const mindMap = {
       title: '4. 安全閘門', tone: 'red',
       items: [
         { head: '吞嚥', leaves: ['GUSS-T 20 輕微或無、10–19 疑似、≤9 不安全', 'RSST ≤2 次／30 秒為陽性', '最高風險優先，陰性不覆蓋'] },
-        { head: '再餵食', leaves: ['極低攝取、體重明顯下降、嚴重肌肉流失或營養不良自動提示', 'BMI、合併症與攝取天數需人工判斷', '先查鉀鎂磷、補 thiamin、漸進供應'] },
+        { head: '再餵食', leaves: ['攝取 <25%、25–49% 超過 5 天、體重明顯下降、嚴重肌肉流失或營養不良自動提示', 'BMI 與合併症需人工判斷', '先查鉀鎂磷、補 thiamin、漸進供應'] },
         { head: '資料可靠度', leaves: ['水腫腹水：用乾體重，保留實測', '腸道不確定：先確認再談 EN／PN'] }
       ]
     },

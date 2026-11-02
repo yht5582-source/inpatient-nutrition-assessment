@@ -75,6 +75,7 @@ const chineseStatusLabels = {
   'Swallowing status conflicts with dysphagia modifier': '吞嚥狀態與吞嚥障礙特殊因子不一致',
   'GI tract uncertain': '胃腸道可用性不確定',
   'Intake not assessed': '攝取量尚未評估',
+  'Intake duration unknown': '攝取不足持續時間不確定',
   'Intake status conflicts with poor-intake modifier': '攝取狀態與攝取不足特殊因子不一致',
   'Nutrition screening': '營養風險篩檢',
   'Geriatric screening': '高齡營養篩檢',
@@ -241,7 +242,20 @@ export const questions = [
   }
 ];
 
-const requiredQuestionIds = questions.map((question) => question.id);
+export const intakeDurationQuestion = {
+  id: 'intakeDuration',
+  label: '攝取 25-49% 已持續多久？',
+  options: ['≤5 天', '6-7 天', '>7 天', '不確定']
+};
+
+// ASPEN 2020 Table 3 splits <50% intake at >5 days; intake below 25% is flagged regardless of duration.
+function asksIntakeDuration(intake) {
+  return intake === '25-49%';
+}
+
+export function getVisibleQuestions(answers) {
+  return asksIntakeDuration(answers.intake) ? [questions[0], intakeDurationQuestion, ...questions.slice(1)] : questions;
+}
 
 function isPositiveNumber(value) {
   return value !== '' && Number.isFinite(Number(value)) && Number(value) > 0;
@@ -355,12 +369,13 @@ export function getRecommendation(context) {
 }
 
 export function getAssessmentStatus(answers) {
-  const missing = requiredQuestionIds.filter((id) => answers[id] === '' || answers[id] == null);
-  const answered = requiredQuestionIds.length - missing.length;
+  const requiredIds = getVisibleQuestions(answers).map((question) => question.id);
+  const missing = requiredIds.filter((id) => answers[id] === '' || answers[id] == null);
+  const answered = requiredIds.length - missing.length;
   return {
     answered,
-    total: requiredQuestionIds.length,
-    percent: Math.round((answered / requiredQuestionIds.length) * 100),
+    total: requiredIds.length,
+    percent: Math.round((answered / requiredIds.length) * 100),
     missing,
     isComplete: missing.length === 0
   };
@@ -384,12 +399,13 @@ function getSafetyAndQuality(context, answers, swallowingScreening, nativeMalnut
   if (context.modifiers.refeeding) safetyFlags.push('Refeeding risk');
   else if (
     intake === '<25% 或幾乎無攝取'
+    || (asksIntakeDuration(intake) && ['6-7 天', '>7 天'].includes(answers.intakeDuration))
     || answers.weightLoss === '是，明顯'
     || answers.muscleLoss === '嚴重'
     || nativeMalnutrition === 'SEVERE'
     || nativeMalnutrition === 'MALNOURISHED'
   ) {
-    // Spec 10.4: severe malnutrition, very low intake or marked weight loss require a refeeding screen.
+    // Spec 10.4: severe malnutrition, very low or prolonged low intake, or marked weight loss require a refeeding screen.
     safetyFlags.push('Refeeding screen required');
   }
 
@@ -397,6 +413,7 @@ function getSafetyAndQuality(context, answers, swallowingScreening, nativeMalnut
   if (context.modifiers.dysphagia && swallow === 'safe') dataQualityFlags.push('Swallowing status conflicts with dysphagia modifier');
   if ((answers.gi || context.giFunction) === 'uncertain') dataQualityFlags.push('GI tract uncertain');
   if (intake === 'not assessed') dataQualityFlags.push('Intake not assessed');
+  if (asksIntakeDuration(intake) && answers.intakeDuration === '不確定') dataQualityFlags.push('Intake duration unknown');
   if (context.modifiers.poorIntake && intake === '>=75%') dataQualityFlags.push('Intake status conflicts with poor-intake modifier');
 
   return { safetyFlags, dataQualityFlags, swallowingResolution };

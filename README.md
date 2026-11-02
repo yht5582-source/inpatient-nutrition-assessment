@@ -16,7 +16,7 @@
 - 工具選取與評估不受介面授權狀態閘門阻擋；工具來源版本與評估方式仍於 registry 顯示
 - Unified normalization：Nutrition Risk、Malnutrition Status、Action Priority 分開呈現
 - Action Priority（spec 9.5／13.5）：原始工具結果、共同臨床資料與安全旗標合併判斷；HIGH 風險或嚴重營養不良 → 紅色，AT_RISK／中度 → 琥珀色，原始評估未完成或關鍵資料不足 → 灰色，全部完成且無警訊 → 綠色
-- 極低攝取、明顯體重下降、嚴重肌肉流失或嚴重營養不良時自動提示「需完成再餵食風險篩檢」，營養供應途徑改為有條件執行（spec 10.4）
+- 極低攝取、攝取 25-49% 超過 5 天、明顯體重下降、嚴重肌肉流失或嚴重營養不良時自動提示「需完成再餵食風險篩檢」，營養供應途徑改為有條件執行（spec 10.4）
 - 結果頁可一鍵複製病歷摘要、列印；建立新評估前需確認，離開頁面時提醒未儲存資料
 - Safety Gate：dysphagia、refeeding risk、fluid-affected weight、GI tract status
 - 選填吞嚥篩檢：醫師、護理師或營養師可複選臺灣版古金吞嚥篩檢量表（GUSS-T）與 30 秒反覆唾液吞嚥測試（RSST）

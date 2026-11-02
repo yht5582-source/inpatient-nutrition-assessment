@@ -26,6 +26,7 @@ import {
   getAssessmentStatus,
   getChineseStatus,
   getContextValidation,
+  getVisibleQuestions,
   getPriorityLabel,
   getRecommendation,
   getReferenceWeight,
@@ -110,6 +111,7 @@ function createInitialContext() {
 function createInitialAnswers() {
   return {
     intake: '',
+    intakeDuration: '',
     weightLoss: '',
     muscleLoss: '',
     gi: '',
@@ -485,7 +487,7 @@ function AssessmentScreen({
         <Panel title="共同臨床評估資料" action={`${assessmentStatus.percent}%`}>
           <div className="progress"><span style={{ width: `${assessmentStatus.percent}%` }} /></div>
           <div className="question-stack">
-            {questions.map((question) => (
+            {getVisibleQuestions(answers).map((question) => (
               <div className="question" key={question.id}>
                 <strong>{question.label}</strong>
                 <div className="option-row">
@@ -609,7 +611,7 @@ export function ResultScreen({
 來源模式：${getChineseStatus(result.sourceMode)}
 ${nativeComplete ? `${completionLabel}：${completionValue}
 正規化領域：營養風險 ${getChineseStatus(result.nutritionRisk)}；營養不良 ${getChineseStatus(result.malnutrition)}` : '原始量表尚未完成；不得以共同臨床資料推測量表分數'}
-營養風險：${getChineseStatus(result.nutritionRisk)}
+${answers.intake === '25-49%' ? `攝取 25-49% 持續時間：${answers.intakeDuration || '未填'}\n` : ''}營養風險：${getChineseStatus(result.nutritionRisk)}
 營養不良狀態：${getChineseStatus(result.malnutrition)}
 處置優先度：${getPriorityLabel(result.priority)}
 評估狀態：${getChineseStatus(result.assessmentStatus)}
@@ -788,7 +790,7 @@ ${overrideTool ? `專業調整：${overrideTool}；原因：${overrideReason}\n`
 
 const safetyFlagText = {
   'Refeeding risk': '營養供應增加前需完成電解質、硫胺素與漸進供應計畫。',
-  'Refeeding screen required': '極低攝取、明顯體重下降、嚴重肌肉流失或嚴重營養不良：開始或增加營養供應前，依院內流程完成再餵食風險篩檢（磷、鉀、鎂、硫胺素）。'
+  'Refeeding screen required': '極低攝取、攝取 <50% 超過 5 天、明顯體重下降、嚴重肌肉流失或嚴重營養不良：開始或增加營養供應前，依院內流程完成再餵食風險篩檢（磷、鉀、鎂、硫胺素）。'
 };
 
 function SafetyPanel({ context, recommendation, answers = {}, swallowingAssessments }) {
