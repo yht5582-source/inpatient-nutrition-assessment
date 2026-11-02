@@ -3,16 +3,20 @@ import {
   Activity,
   AlertTriangle,
   BadgeCheck,
+  BookOpen,
   ClipboardCheck,
   Copy,
   FileText,
+  GitFork,
+  GraduationCap,
   Home,
   Info,
   ShieldAlert,
   Stethoscope,
   UserRound,
   Utensils,
-  Waves
+  Waves,
+  X
 } from 'lucide-react';
 import {
   applyDiagnosisSelection,
@@ -46,6 +50,11 @@ import {
   evaluateSwallowingAssessments,
   resolveSwallowingSafety
 } from './swallowingAssessments.js';
+import { buildCaseState, teachingViews } from './teaching.js';
+import { CasesView, MindMapView, QuizView } from './TeachingViews.jsx';
+
+const teachingIcons = { cases: BookOpen, quiz: GraduationCap, map: GitFork };
+const teachingIds = teachingViews.map((view) => view.id);
 
 const steps = [
   { id: 'home', title: '首頁', mobileTitle: '首頁', subtitle: 'Home', icon: Home },
@@ -141,6 +150,23 @@ function StepRail({ activeStep, setActiveStep, canNavigate }) {
           );
         })}
       </nav>
+      <div className="teach-rail">
+        <span className="teach-rail-label">教學</span>
+        <nav className="teach-nav" aria-label="教學">
+          {teachingViews.map((view) => {
+            const Icon = teachingIcons[view.id];
+            return (
+              <button key={view.id} className={cx('teach-item', activeStep === view.id && 'active')} onClick={() => setActiveStep(view.id)}>
+                <Icon size={17} aria-hidden="true" />
+                <span>
+                  <strong>{view.title}</strong>
+                  <small>{view.subtitle}</small>
+                </span>
+              </button>
+            );
+          })}
+        </nav>
+      </div>
     </aside>
   );
 }
@@ -962,7 +988,11 @@ function FooterActions({ back, next, onBack, onNext, nextDisabled = false }) {
 export default function App() {
   const requestedStep = new URLSearchParams(window.location.search).get('screen');
   const initialStep = steps.some((step) => step.id === requestedStep) ? requestedStep : 'home';
-  const [activeStep, setActiveStep] = useState(['home', 'context'].includes(initialStep) ? initialStep : 'context');
+  const requestedView = window.location.hash.slice(1);
+  const [activeStep, setActiveStep] = useState(
+    teachingIds.includes(requestedView) ? requestedView : ['home', 'context'].includes(initialStep) ? initialStep : 'context'
+  );
+  const [demoCase, setDemoCase] = useState(null);
   const [context, setContext] = useState(createInitialContext);
   const [overrideTool, setOverrideTool] = useState('');
   const [overrideReason, setOverrideReason] = useState('');
@@ -988,7 +1018,25 @@ export default function App() {
     setOverrideReason('');
   }, [recommendation?.primaryTool]);
 
+  useEffect(() => {
+    const syncFromHash = () => {
+      const view = window.location.hash.slice(1);
+      setActiveStep((current) => (teachingIds.includes(view) ? view : teachingIds.includes(current) ? 'home' : current));
+    };
+    window.addEventListener('hashchange', syncFromHash);
+    return () => window.removeEventListener('hashchange', syncFromHash);
+  }, []);
+
+  const clearTeachingHash = () => {
+    if (window.location.hash) window.history.pushState(null, '', window.location.pathname + window.location.search);
+  };
+
   const navigateTo = (step) => {
+    if (teachingIds.includes(step)) {
+      window.location.hash = step;
+      return setActiveStep(step);
+    }
+    clearTeachingHash();
     if (step === 'tool' && !contextValidation.isValid) return setActiveStep('context');
     if ((step === 'assessment' || step === 'result') && !canStartAssessment) return setActiveStep('tool');
     if (step === 'result' && !assessmentStatus.isComplete) return setActiveStep('assessment');
@@ -998,22 +1046,21 @@ export default function App() {
   const hasEnteredData = context.patientName !== '' || context.age !== '' || context.height !== '' || context.weight !== '';
 
   useEffect(() => {
-    if (!hasEnteredData) return undefined;
+    if (!hasEnteredData || demoCase) return undefined;
     const warn = (event) => {
       event.preventDefault();
       event.returnValue = '';
     };
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
-  }, [hasEnteredData]);
+  }, [hasEnteredData, demoCase]);
 
   useEffect(() => {
     // The native-assessment shortcut scrolls to its own anchor instead.
     if (!focusNativeAssessment) window.scrollTo({ top: 0 });
   }, [activeStep]);
 
-  const finishAssessment = () => {
-    if (!window.confirm('將清除本次所有輸入並回到首頁，請確認已複製或記錄病歷摘要。')) return;
+  const clearAssessment = () => {
     setContext(createInitialContext());
     setAnswers(createInitialAnswers());
     setToolAssessments(createInitialToolAssessments());
@@ -1021,7 +1068,34 @@ export default function App() {
     setFocusNativeAssessment(false);
     setOverrideTool('');
     setOverrideReason('');
+    setDemoCase(null);
+  };
+
+  const finishAssessment = () => {
+    if (!window.confirm('將清除本次所有輸入並回到首頁，請確認已複製或記錄病歷摘要。')) return;
+    clearAssessment();
     setActiveStep('home');
+  };
+
+  const loadCase = (caseData, target) => {
+    if (hasEnteredData && !demoCase && !window.confirm('帶入示範病例會覆蓋目前輸入的資料，確定繼續？')) return;
+    const state = buildCaseState(caseData, createInitialContext());
+    setContext(state.context);
+    setAnswers(state.answers);
+    setToolAssessments(state.toolAssessments);
+    setSwallowingAssessments(state.swallowingAssessments);
+    setFocusNativeAssessment(false);
+    setOverrideTool('');
+    setOverrideReason('');
+    setDemoCase(caseData);
+    // The case is complete by construction; navigateTo would still see the pre-load state.
+    clearTeachingHash();
+    setActiveStep(target);
+  };
+
+  const exitDemoCase = () => {
+    clearAssessment();
+    navigateTo('cases');
   };
 
   const syncAssessmentField = (field, value) => {
@@ -1045,7 +1119,19 @@ export default function App() {
     <div className="app-shell">
       <StepRail activeStep={activeStep} setActiveStep={navigateTo} canNavigate={canNavigate} />
       <div className="workspace">
-        <TopBar context={context} setContext={setContext} />
+        {!teachingIds.includes(activeStep) && <TopBar context={context} setContext={setContext} />}
+        {demoCase && !teachingIds.includes(activeStep) && (
+          <div className="demo-banner" role="status">
+            <span><strong>示範病例，非真實病人：</strong>{demoCase.title}</span>
+            <button type="button" className="demo-banner-exit" onClick={exitDemoCase}>
+              <X size={15} aria-hidden="true" />
+              清除並回示範病例
+            </button>
+          </div>
+        )}
+        {activeStep === 'cases' && <CasesView baseContext={initialContext} onLoadCase={loadCase} />}
+        {activeStep === 'quiz' && <QuizView />}
+        {activeStep === 'map' && <MindMapView />}
         {activeStep === 'home' && <HomeScreen setActiveStep={navigateTo} setContext={setContext} />}
         {activeStep === 'context' && <ContextScreen context={context} setContext={setContext} recommendation={recommendation} contextValidation={contextValidation} setActiveStep={navigateTo} syncAssessmentField={syncAssessmentField} />}
         {activeStep === 'tool' && recommendation && <ToolScreen recommendation={recommendation} overrideTool={overrideTool} setOverrideTool={setOverrideTool} overrideReason={overrideReason} setOverrideReason={setOverrideReason} setActiveStep={navigateTo} />}
