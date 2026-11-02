@@ -62,9 +62,9 @@ describe('demo cases run through the real engine', () => {
 });
 
 describe('quiz structure', () => {
-  test('20 questions, 10 basic then 10 advanced', () => {
+  test('20 questions, 10 general then 10 advanced', () => {
     assert.equal(quizQuestions.length, 20);
-    assert.deepEqual(quizQuestions.slice(0, 10).map((q) => q.level), Array(10).fill('基礎'));
+    assert.deepEqual(quizQuestions.slice(0, 10).map((q) => q.level), Array(10).fill('一般'));
     assert.deepEqual(quizQuestions.slice(10).map((q) => q.level), Array(10).fill('高階'));
   });
 

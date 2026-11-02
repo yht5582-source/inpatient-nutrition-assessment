@@ -17,7 +17,7 @@ import {
 
 export const teachingViews = [
   { id: 'cases', title: '示範病例', subtitle: '6 例，可帶入工具' },
-  { id: 'quiz', title: '考題', subtitle: '基礎 10＋高階 10' },
+  { id: 'quiz', title: '考題', subtitle: '一般、高階各 10 題' },
   { id: 'map', title: '心智圖', subtitle: '整體判斷路徑' }
 ];
 
@@ -309,7 +309,7 @@ export function evaluateCase(caseData, baseContext, now = new Date()) {
 
 export const quizQuestions = [
   {
-    id: 'q1', level: '基礎', answer: 'C',
+    id: 'q1', level: '一般', answer: 'C',
     stem: '76 歲血液透析病人合併心衰竭，住一般病房。本工具的首選評估工具是？',
     options: {
       A: 'MNA-SF（年齡 ≥65 優先）',
@@ -321,7 +321,7 @@ export const quizQuestions = [
     refs: ['kdoqi']
   },
   {
-    id: 'q2', level: '基礎', answer: 'B',
+    id: 'q2', level: '一般', answer: 'B',
     stem: '71 歲病人，NRS-2002 營養狀態 1 分、疾病嚴重度 1 分。正確解讀是？',
     options: {
       A: '2 分，每週重新篩檢',
@@ -333,7 +333,7 @@ export const quizQuestions = [
     refs: ['kondrup', 'sccm']
   },
   {
-    id: 'q3', level: '基礎', answer: 'A',
+    id: 'q3', level: '一般', answer: 'A',
     stem: '共同臨床資料都已填，攝取 ≥75%、無體重下降與肌肉流失、吞嚥安全、腸道可用，但原始量表尚未完成。處置優先度顯示？',
     options: {
       A: '灰色：資料不足，不硬算結果',
@@ -345,7 +345,7 @@ export const quizQuestions = [
     refs: []
   },
   {
-    id: 'q4', level: '基礎', answer: 'D',
+    id: 'q4', level: '一般', answer: 'D',
     stem: '60 歲 ICU 病人，APACHE II 16、SOFA 7、共病 2 項、住院 2 天後入 ICU，無 IL-6。mNUTRIC 結果是？',
     options: {
       A: '4 分，低分',
@@ -357,7 +357,7 @@ export const quizQuestions = [
     refs: ['heyland', 'sccm']
   },
   {
-    id: 'q5', level: '基礎', answer: 'C',
+    id: 'q5', level: '一般', answer: 'C',
     stem: '82 歲住院病人，官方 MNA-SF 總分 9。分類是？',
     options: {
       A: '營養正常',
@@ -369,7 +369,7 @@ export const quizQuestions = [
     refs: ['kaiser']
   },
   {
-    id: 'q6', level: '基礎', answer: 'A',
+    id: 'q6', level: '一般', answer: 'A',
     stem: '透析病人的 7-point SGA 七個欄位都勾選中度，營養師整體評定 4 分。本工具如何呈現？',
     options: {
       A: '4 分，輕至中度營養不良',
@@ -381,7 +381,7 @@ export const quizQuestions = [
     refs: ['kdoqi']
   },
   {
-    id: 'q7', level: '基礎', answer: 'D',
+    id: 'q7', level: '一般', answer: 'D',
     stem: '肝硬化病人目前接受管灌，BMI 24，近半年體重穩定。RFH-NPT 結果是？',
     options: {
       A: '低風險，BMI 正常',
@@ -393,7 +393,7 @@ export const quizQuestions = [
     refs: ['rfh']
   },
   {
-    id: 'q8', level: '基礎', answer: 'B',
+    id: 'q8', level: '一般', answer: 'B',
     stem: '癌症病人官方 PG-SGA SF 總分 7。本工具的營養風險欄位顯示？',
     options: {
       A: '低風險（2–3 分區間）',
@@ -405,7 +405,7 @@ export const quizQuestions = [
     refs: ['pgsga']
   },
   {
-    id: 'q9', level: '基礎', answer: 'A',
+    id: 'q9', level: '一般', answer: 'A',
     stem: '心衰竭合併水腫，測量體重 67.2 kg，乾體重 63.5 kg。需求計算的參考體重應如何處理？',
     options: {
       A: '用 63.5 kg，並保留 67.2 kg',
@@ -417,7 +417,7 @@ export const quizQuestions = [
     refs: []
   },
   {
-    id: 'q10', level: '基礎', answer: 'C',
+    id: 'q10', level: '一般', answer: 'C',
     stem: 'GUSS-T 間接測試 5 分、半固體 5 分、液體階段只得 2 分。下一步與結果是？',
     options: {
       A: '繼續測固體，總分未定',

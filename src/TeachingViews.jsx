@@ -82,6 +82,11 @@ export function CasesView({ baseContext, onLoadCase }) {
   );
 }
 
+const quizLevels = [
+  { id: '一般', note: '工具選擇與計分判讀，10 題' },
+  { id: '高階', note: 'GLIM、再餵食與途徑決策，10 題' }
+];
+
 function QuizCard({ question, number, picked, onPick }) {
   const answered = picked != null;
   const correct = picked === question.answer;
@@ -123,42 +128,61 @@ function QuizCard({ question, number, picked, onPick }) {
 }
 
 export function QuizView() {
+  const [level, setLevel] = useState('一般');
   const [picks, setPicks] = useState({});
-  const answered = Object.keys(picks).length;
-  const score = quizQuestions.filter((question) => picks[question.id] === question.answer).length;
+  const items = quizQuestions.filter((question) => question.level === level);
+  const answered = items.filter((question) => picks[question.id]).length;
+  const score = items.filter((question) => picks[question.id] === question.answer).length;
   const onPick = (id, letter) => setPicks((current) => (current[id] ? current : { ...current, [id]: letter }));
-  const groups = ['基礎', '高階'].map((level) => ({
-    level,
-    items: quizQuestions.filter((question) => question.level === level)
-  }));
+  const chooseLevel = (next) => {
+    setLevel(next);
+    window.scrollTo({ top: 0 });
+  };
+  const resetLevel = () => {
+    setPicks((current) => Object.fromEntries(
+      Object.entries(current).filter(([id]) => !items.some((question) => question.id === id))
+    ));
+    window.scrollTo({ top: 0 });
+  };
 
   return (
     <section className="screen teach-screen">
       <header className="teach-head">
         <h1>考題</h1>
-        <p>選擇後立即顯示答案與依據。不儲存作答，重新整理即清除。</p>
+        <p>選擇程度後作答，選完立即顯示答案與依據。不儲存作答，重新整理即清除。</p>
       </header>
+      <div className="quiz-levels" role="group" aria-label="考題程度">
+        {quizLevels.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            className={`quiz-level${level === option.id ? ' active' : ''}`}
+            aria-pressed={level === option.id}
+            onClick={() => chooseLevel(option.id)}
+          >
+            <strong>{option.id}</strong>
+            <small>{option.note}</small>
+          </button>
+        ))}
+      </div>
       <div className="quiz-score" role="status">
-        <strong>答對 {score}／已答 {answered}／共 {quizQuestions.length}</strong>
-        <button type="button" className="outline-button" disabled={answered === 0} onClick={() => setPicks({})}>
+        <strong>{level}：答對 {score}／已答 {answered}／共 {items.length}</strong>
+        <button type="button" className="outline-button" disabled={answered === 0} onClick={resetLevel}>
           <RotateCcw size={15} aria-hidden="true" />
           重新作答
         </button>
       </div>
-      {groups.map((group) => (
-        <div className="quiz-group" key={group.level}>
-          <h2>{group.level}（{group.items.length} 題）</h2>
-          {group.items.map((question) => (
-            <QuizCard
-              key={question.id}
-              question={question}
-              number={quizQuestions.indexOf(question) + 1}
-              picked={picks[question.id]}
-              onPick={onPick}
-            />
-          ))}
-        </div>
-      ))}
+      <div className="quiz-group">
+        {items.map((question, index) => (
+          <QuizCard
+            key={question.id}
+            question={question}
+            number={index + 1}
+            picked={picks[question.id]}
+            onPick={onPick}
+          />
+        ))}
+      </div>
     </section>
   );
 }
