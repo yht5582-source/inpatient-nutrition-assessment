@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { CheckCircle2, ClipboardCheck, ExternalLink, FileText, RotateCcw, XCircle } from 'lucide-react';
+import { CheckCircle2, ChevronRight, ChevronsDownUp, ChevronsUpDown, ClipboardCheck, ExternalLink, FileText, RotateCcw, XCircle } from 'lucide-react';
 import { getChineseStatus, getPriorityLabel } from './clinicalLogic.js';
 import { demoCases, evaluateCase, mindMap, quizQuestions, sources } from './teaching.js';
 
@@ -187,7 +187,24 @@ export function QuizView() {
   );
 }
 
+function MapToggle({ open, onClick, children }) {
+  return (
+    <button type="button" className="mindmap-toggle" aria-expanded={open} onClick={onClick}>
+      <ChevronRight size={16} className={open ? 'open' : ''} aria-hidden="true" />
+      <span>{children}</span>
+    </button>
+  );
+}
+
 export function MindMapView() {
+  const [closed, setClosed] = useState(() => new Set());
+  const toggle = (key) => setClosed((current) => {
+    const next = new Set(current);
+    if (!next.delete(key)) next.add(key);
+    return next;
+  });
+  const allClosed = mindMap.branches.every((branch) => closed.has(branch.title));
+
   return (
     <section className="screen teach-screen">
       <header className="teach-head">
@@ -195,17 +212,36 @@ export function MindMapView() {
         <p>{mindMap.note}</p>
       </header>
       <div className="mindmap">
-        <div className="mindmap-root">{mindMap.root}</div>
+        <div className="mindmap-bar">
+          <div className="mindmap-root">{mindMap.root}</div>
+          <div className="mindmap-actions">
+            <button type="button" className="outline-button" disabled={closed.size === 0} onClick={() => setClosed(new Set())}>
+              <ChevronsUpDown size={15} aria-hidden="true" />
+              全部展開
+            </button>
+            <button type="button" className="outline-button" disabled={allClosed} onClick={() => setClosed(new Set(mindMap.branches.map((branch) => branch.title)))}>
+              <ChevronsDownUp size={15} aria-hidden="true" />
+              全部收合
+            </button>
+          </div>
+        </div>
         <div className="mindmap-branches">
           {mindMap.branches.map((branch) => (
             <section className={`mindmap-branch tone-${branch.tone}`} key={branch.title}>
-              <h2>{branch.title}</h2>
-              {branch.items.map((item) => (
-                <div className="mindmap-item" key={item.head}>
-                  <h3>{item.head}</h3>
-                  <ul>{item.leaves.map((leaf) => <li key={leaf}>{leaf}</li>)}</ul>
-                </div>
-              ))}
+              <h2>
+                <MapToggle open={!closed.has(branch.title)} onClick={() => toggle(branch.title)}>{branch.title}</MapToggle>
+              </h2>
+              {!closed.has(branch.title) && branch.items.map((item) => {
+                const key = `${branch.title}/${item.head}`;
+                return (
+                  <div className="mindmap-item" key={item.head}>
+                    <h3>
+                      <MapToggle open={!closed.has(key)} onClick={() => toggle(key)}>{item.head}</MapToggle>
+                    </h3>
+                    {!closed.has(key) && <ul>{item.leaves.map((leaf) => <li key={leaf}>{leaf}</li>)}</ul>}
+                  </div>
+                );
+              })}
             </section>
           ))}
         </div>

@@ -2116,20 +2116,58 @@ button {
   margin-bottom: 18px;
 }
 
-.mindmap-root::after {
-  content: "";
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  width: 2px;
-  height: 22px;
-  background: var(--line-strong);
+.mindmap-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.mindmap-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.mindmap-actions .outline-button {
+  min-height: 36px;
+  padding: 6px 12px;
+}
+
+.mindmap-actions .outline-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.mindmap-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  padding: 2px 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  font: inherit;
+  text-align: left;
+}
+
+.mindmap-toggle:hover {
+  color: var(--teal-dark);
+}
+
+.mindmap-toggle svg {
+  flex: none;
+  transition: transform 0.15s ease;
+}
+
+.mindmap-toggle svg.open {
+  transform: rotate(90deg);
 }
 
 .mindmap-root {
-  position: relative;
   width: fit-content;
-  margin: 0 auto 22px;
   padding: 11px 24px;
   color: #fff;
   background: var(--teal);
@@ -2141,6 +2179,7 @@ button {
 .mindmap-branches {
   position: relative;
   display: grid;
+  align-items: start;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
 }
@@ -2162,7 +2201,7 @@ button {
 .tone-gray { --branch: var(--gray); }
 
 .mindmap-branch h2 {
-  margin: 0 0 8px;
+  margin: 0;
   font-size: 16px;
 }
 
@@ -2171,14 +2210,18 @@ button {
   border-top: 1px solid var(--line);
 }
 
+.mindmap-branch h2 + .mindmap-item {
+  margin-top: 8px;
+}
+
 .mindmap-item h3 {
-  margin: 0 0 4px;
+  margin: 0 0 2px;
   font-size: 14px;
 }
 
 .mindmap-item ul {
   margin: 0 0 6px;
-  padding: 0;
+  padding: 0 0 0 21px;
   list-style: none;
 }
 
